@@ -1,0 +1,8 @@
+[    1574.393150] EV_KEY       KEY_F24              DOWN                
+[    1574.393150] EV_SYN       SYN_REPORT           00000000            
+[    1574.668744] EV_KEY       KEY_F24              UP                  
+[    1574.668744] EV_SYN       SYN_REPORT           00000000            
+[    1576.184621] EV_KEY       KEY_F24              DOWN                
+[    1576.184621] EV_SYN       SYN_REPORT           00000000            
+[    1577.785312] EV_KEY       KEY_F24              UP                  
+[    1577.785312] EV_SYN       SYN_REPORT           00000000            

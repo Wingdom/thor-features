@@ -1,0 +1,6 @@
+id=thor-aynkey
+name=Thor AYN button (aynkeyd)
+version=v0.1.0
+versionCode=1
+author=local
+description=Bind the AYN Thor's physical AYN button. Short press and long press each run /data/adb/thor-aynkey/action.sh, so the module is inert until an action is installed. The button is KEY_F24 on gpio-keys and nothing in LineageOS binds it; the daemon reads the evdev node as root because an app only receives key events while focused. The long action fires at 2000 ms without waiting for release. Reads one input node, writes no hardware node and no system property.

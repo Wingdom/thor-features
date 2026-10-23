@@ -1,0 +1,121 @@
+#!/system/bin/sh
+# display-match -- AYN Thor display geometry helpers.
+#
+# The module's real work is a single overlaid file:
+#   /vendor/etc/display_settings.xml, with an ignoreOrientationRequest entry
+#   added for the PRIMARY display.
+# That is applied by Magisk's mount, not by this script. This script exists for
+# install-time XML generation (make-xml), status, and revert.
+
+STATE=${THOR_DM_STATE:-/data/adb/thor-display-match}
+
+die() { echo "display-match: $*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# make-xml <stock-xml> <display-unique-id>
+#
+# Emit the stock display_settings.xml with a <display> entry added for
+# <display-unique-id> carrying ignoreOrientationRequest="true".
+#
+# Pure text transform: no device access, so it is unit-testable on the host.
+# Idempotent -- if the id is already present the input is emitted unchanged.
+# ---------------------------------------------------------------------------
+make_xml() {
+    _src=$1; _id=$2
+    [ -f "$_src" ] || die "no such file: $_src"
+    [ -n "$_id" ]  || die "make-xml: empty display id"
+    grep -q '</display-settings>' "$_src" || die "no </display-settings> in $_src"
+
+    if grep -q "name=\"$_id\"" "$_src"; then
+        cat "$_src"
+        return 0
+    fi
+
+    awk -v id="$_id" '
+        /<\/display-settings>/ && !done {
+            print "    <display"
+            print "        name=\"" id "\""
+            print "        ignoreOrientationRequest=\"true\" />"
+            done = 1
+        }
+        { print }
+    ' "$_src"
+}
+
+# primary_id -- unique id of the built-in display the framework treats as
+# default. Taken from dumpsys rather than hardcoded: the id is stable per
+# device model, but reading it is free and a wrong hardcoded id would silently
+# do nothing.
+primary_id() {
+    _d=$(dumpsys display 2>/dev/null)
+
+    # Preferred: the viewport dump states the mapping outright, e.g.
+    #   DisplayViewport{... displayId=0, uniqueId='local:4630946441858561667' ...}
+    _id=$(printf '%s' "$_d" \
+        | grep -oE "displayId=0, uniqueId='local:[0-9]+'" \
+        | head -1 | sed "s/.*uniqueId='//; s/'$//")
+    if [ -n "$_id" ]; then printf '%s\n' "$_id"; return 0; fi
+
+    # Fallback: widest built-in display. Numeric sort -- a lexicographic one
+    # would rank "960" above "1240".
+    printf '%s' "$_d" \
+        | grep -oE 'uniqueId="local:[0-9]+", [0-9]+ x [0-9]+' \
+        | awk -F'"' '{split($3,d,", "); print $2, d[2]}' \
+        | sort -k2,2 -rn | awk 'NR==1{print $1}'
+}
+
+cmd_status() {
+    echo "module:"
+    if [ -d /data/adb/modules/thor-display-match ]; then
+        if [ -f /data/adb/modules/thor-display-match/disable ]; then
+            echo "  installed, DISABLED"
+        else
+            echo "  installed, enabled"
+        fi
+    else
+        echo "  not installed"
+    fi
+    echo "vendor xml in effect:"
+    sed 's/^/  /' /vendor/etc/display_settings.xml 2>/dev/null
+    echo "data override:"
+    if [ -f /data/system/display_settings.xml ]; then
+        echo "  present ($(wc -c < /data/system/display_settings.xml) bytes)" \
+             "-- overrides the vendor file"
+    else
+        echo "  none"
+    fi
+    echo "effective:"
+    echo "  $(wm get-ignore-orientation-request -d 0 2>/dev/null)"
+    echo "  user_rotation=$(settings get system user_rotation 2>/dev/null)" \
+         "accelerometer_rotation=$(settings get system accelerometer_rotation 2>/dev/null)" \
+         "angles=$(settings get system accelerometer_rotation_angles 2>/dev/null)"
+}
+
+# The framework bakes the vendor file's value into
+# /data/system/display_settings.xml on the first boot after install, and that
+# file outlives the module -- `touch disable` unmounts the overlay but the
+# setting survives. Proven on device 2026-10-22. So a complete revert has to
+# remove the override too.
+DATA_OVERRIDE=${THOR_DM_DATA_OVERRIDE:-/data/system/display_settings.xml}
+
+cmd_revert() {
+    _did=0
+    if [ -f "$DATA_OVERRIDE" ]; then
+        rm -f "$DATA_OVERRIDE" || die "could not remove $DATA_OVERRIDE"
+        echo "removed $DATA_OVERRIDE"
+        _did=1
+    else
+        echo "no $DATA_OVERRIDE to remove"
+    fi
+    [ "$_did" = 1 ] && echo "reboot to complete the revert"
+    return 0
+}
+
+case "${1:-status}" in
+    make-xml)   shift; make_xml "${1:-}" "${2:-}" ;;
+    primary-id) primary_id ;;
+    status)     cmd_status ;;
+    revert)     cmd_revert ;;
+    *) echo "usage: display-match [status|revert|make-xml <file> <id>|primary-id]" >&2
+       exit 2 ;;
+esac

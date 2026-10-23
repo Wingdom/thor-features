@@ -1,0 +1,529 @@
+#!/system/bin/sh
+# stickfx - joystick LED effects for the AYN Thor on LineageOS.
+#
+# This module is an ADD-ON to what the ROM already ships. LineageOS includes
+# org.lineageos.settings.ayn (AynParts), which owns joystick LED *colour*:
+# per-LED/per-side/global colour pickers with a brightness channel, restored at
+# boot. We do not duplicate or fight that.
+#
+# How the two coexist -- verified on hardware 2026-10-21:
+#
+#   multi_intensity  is the COLOUR channel. A trigger never touches it.
+#   brightness       is the master level, and a trigger DRIVES it.
+#
+#   Observed on left:stick:0 with multi_intensity="43 224 216":
+#     echo timer > trigger  ->  delay_on/delay_off appear,
+#                               multi_intensity still "43 224 216",
+#                               brightness sampled: 0 0 200 200 0 200 0 0
+#
+# So stickfx writes ONLY trigger / delay_on / delay_off. AynParts keeps colour.
+# There is no contention because we never write the attribute it writes.
+#
+# The one exception is `--color`, an explicit takeover of the colour channel for
+# the case where nothing has configured a colour at all (AynParts defaults to
+# rgb_lighting_enable=false, which leaves every LED at "0 0 0" -- black, so a
+# trigger would drive an invisible LED). A takeover records the originals and
+# `stickfx off` puts them back.
+#
+# Why triggers and not a daemon:
+#   The kernel LED class already knows about battery and USB state. Polling for
+#   it from userspace would spawn processes forever on a handheld; fanctl's
+#   selftest once took 14 minutes that way and heated the SoC enough to spin the
+#   fan up by itself. If the kernel can trigger it, the kernel triggers it.
+#
+# Usage:  stickfx status | charge | breathe [ms] | off  [--color RRGGBB]
+#
+# Safety invariants:
+#   - never write multi_intensity unless --color was given explicitly
+#   - never write a trigger the LED does not advertise in its own trigger list
+#   - LED names are always discovered, never hardcoded (see the cooling_device34
+#     lesson in the top-level README: sysfs indices move across boots)
+#   - originals are recorded once per boot and are the only source for `off`
+
+set -u
+
+STATE_DIR=${STICKFX_STATE_DIR:-/data/adb/thor-stickfx}
+ORIG_FILE="$STATE_DIR/original.tsv"
+MODE_FILE="$STATE_DIR/mode"
+COLOR_FILE="$STATE_DIR/color"
+TRIGGER_FILE="$STATE_DIR/trigger"
+LED_ROOT=${STICKFX_LED_ROOT:-/sys/class/leds}
+
+# --- tunables -----------------------------------------------------------------
+# blink while charging, solid when full. The kernel offers plain
+# battery-charging / battery-full / battery-charging-or-full too.
+# Effective trigger, in precedence order: environment > persisted choice >
+# default. The persisted file matters because service.sh re-applies at boot: an
+# env-only override would silently revert to blinking on the next reboot.
+# Default is battery-charging-or-full -- solid whenever plugged in -- not the
+# blink variant. Measured reason: on a 0.9 A SDP (PC) port with the screen awake
+# this device never reaches POWER_SUPPLY_STATUS_FULL at all. Battery current
+# wobbled 250-650 mA and went negative 13 times in 13 minutes, so the pack never
+# reaches the 4.40 V constant-voltage plateau where charging terminates. The
+# blink variant would therefore blink forever, and battery-full would almost
+# never light. See "Will status ever reach Full?" in README.md.
+CHARGE_TRIGGER=${CHARGE_TRIGGER:-$(cat "$TRIGGER_FILE" 2>/dev/null || echo battery-charging-or-full)}
+BREATHE_MS=${BREATHE_MS:-1200}        # full period; split evenly on/off
+# A trigger only *changes* brightness on a power-supply event (see seed_state),
+# so after binding we seed the current state ourselves. This is the level used.
+SEED_BRIGHTNESS=${SEED_BRIGHTNESS:-255}
+BATT_STATUS=${BATT_STATUS:-/sys/class/power_supply/battery/status}
+MIN_BREATHE_MS=${MIN_BREATHE_MS:-200}
+MAX_BREATHE_MS=${MAX_BREATHE_MS:-10000}
+
+# ==============================================================================
+# pure logic (unit-tested on the host; no device access)
+# ==============================================================================
+
+# normalise "RRGGBB" or "#RRGGBB" -> "R G B" decimal, or fail
+#
+# Every helper below uses _sfx_-prefixed variables on purpose. POSIX sh has no
+# guaranteed `local`, so a plain `for t in ...` inside a function CLOBBERS the
+# caller's $t. That is not hypothetical: the first run of test_logic.sh printed
+# four identical labels because trigger_supported() overwrote the loop variable
+# of the test that was calling it.
+parse_color() {
+    _sfx_c=${1#\#}
+    case "$_sfx_c" in
+        [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+        *) return 1 ;;
+    esac
+    _sfx_r=$(printf '%d' "0x$(echo "$_sfx_c" | cut -c1-2)")
+    _sfx_g=$(printf '%d' "0x$(echo "$_sfx_c" | cut -c3-4)")
+    _sfx_b=$(printf '%d' "0x$(echo "$_sfx_c" | cut -c5-6)")
+    echo "$_sfx_r $_sfx_g $_sfx_b"
+}
+
+# a breathe period -> delay_on/delay_off, clamped. Echoes "on off".
+breathe_delays() {
+    _sfx_ms=${1:-$BREATHE_MS}
+    case "$_sfx_ms" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$_sfx_ms" -lt "$MIN_BREATHE_MS" ] && _sfx_ms=$MIN_BREATHE_MS
+    [ "$_sfx_ms" -gt "$MAX_BREATHE_MS" ] && _sfx_ms=$MAX_BREATHE_MS
+    _sfx_half=$((_sfx_ms / 2))
+    echo "$_sfx_half $_sfx_half"
+}
+
+# is a colour string all-zero (i.e. the LED would be invisible)?
+is_black() {
+    for _sfx_v in $1; do
+        case "$_sfx_v" in ''|*[!0-9]*) continue ;; esac
+        [ "$_sfx_v" -gt 0 ] && return 1
+    done
+    return 0
+}
+
+# does a trigger list (as the kernel prints it, with [active] markers)
+# advertise the given trigger name? Exact match only -- battery-charging and
+# battery-charging-blink-full-solid are different triggers.
+# NOTE: these two parse by string manipulation, never `for x in $list`.
+# Unquoted word splitting also performs PATHNAME EXPANSION, and the active entry
+# is bracketed -- so "[battery-charging-blink-full-solid]" is a valid glob
+# character class. With cwd "/" it expands to the single-character entry "d"
+# (which is in that set), silently destroying the bracket before any parsing
+# happens. That cost a debugging round on real hardware: the trigger was
+# correctly active while the script insisted all 8 writes had failed.
+#
+# Note also that ${x#*[} is an INVALID pattern (unterminated bracket
+# expression) and errors on some shells -- the bracket must be escaped.
+trigger_supported() {
+    [ -n "${2:-}" ] || return 1
+    _sfx_list=$(printf '%s' "$1" | tr -d '[]' | tr '\n' ' ')
+    case " $_sfx_list " in
+        *" $2 "*) return 0 ;;
+    esac
+    return 1
+}
+
+# Map a power_supply `status` string to the brightness the charge trigger would
+# eventually set. Needed because the kernel's power-supply LED triggers are
+# EDGE-driven, not level-driven: power_supply_update_leds() runs only from
+# power_supply_changed(), so binding a trigger does not sample current state.
+# Confirmed in AYN's own kernel drop, drivers/power/supply/power_supply_leds.c:
+#   FULL     -> charging_blink_full_solid_trig: LED_OFF then LED_FULL (solid)
+#   CHARGING -> led_trigger_blink(...)                                (blink)
+#   default  -> LED_OFF
+# Without seeding, booting while plugged in leaves the LED dark until unplug.
+seed_for_status() {
+    case "$1" in
+        Charging|Full) echo "$SEED_BRIGHTNESS" ;;
+        *)             echo 0 ;;
+    esac
+}
+
+# extract the active trigger from a kernel trigger list
+active_trigger() {
+    case "$1" in
+        *'['*']'*) ;;
+        *) echo unknown; return 0 ;;
+    esac
+    _sfx_t=${1#*\[}
+    _sfx_t=${_sfx_t%%\]*}
+    if [ -n "$_sfx_t" ]; then echo "$_sfx_t"; else echo unknown; fi
+}
+
+[ "${STICKFX_LIB:-0}" = 1 ] && return 0
+
+# ==============================================================================
+# device access
+# ==============================================================================
+
+# Discover the stick LEDs. Never hardcode names: AynParts also references
+# left:strip / right:strip and left:stick / right:stick group nodes, which exist
+# on other Odin models but NOT on the Thor.
+discover() {
+    for d in "$LED_ROOT"/*:stick:*; do
+        [ -e "$d/trigger" ] || continue
+        [ -e "$d/multi_intensity" ] || continue
+        echo "$d"
+    done
+}
+
+die() { echo "! $*" >&2; exit 1; }
+
+capture() {
+    force=${1:-}
+    if [ -s "$ORIG_FILE" ] && [ "$force" != "--force" ]; then
+        return 0
+    fi
+    mkdir -p "$STATE_DIR" || die "cannot create $STATE_DIR"
+    tmp="$ORIG_FILE.tmp"
+    : > "$tmp"
+    n=0
+    for d in $(discover); do
+        trg=$(active_trigger "$(cat "$d/trigger" 2>/dev/null)")
+        br=$(cat "$d/brightness" 2>/dev/null)
+        mi=$(cat "$d/multi_intensity" 2>/dev/null)
+        printf '%s\t%s\t%s\t%s\n' "${d##*/}" "$trg" "$br" "$mi" >> "$tmp"
+        n=$((n+1))
+    done
+    [ "$n" -gt 0 ] || { rm -f "$tmp"; die "no stick LEDs found under $LED_ROOT"; }
+    mv "$tmp" "$ORIG_FILE"
+    echo "recorded $n LEDs"
+}
+
+# Write one node and verify it took.
+#
+# Trigger activation is ASYNCHRONOUS: the LED core tears down the old trigger
+# and registers the new one in deferred work, so an immediate read-back can show
+# the old value or, briefly, no bracketed entry at all. Seen live -- the first
+# prototype run reported all 8 writes as failures while the file in fact read
+# `[usb-online]` a moment later. So poll, bounded, the way stock's own node
+# writer did (20 tries at 50 ms).
+wr() {
+    printf '%s' "$2" > "$1" 2>/dev/null || return 1
+    _sfx_i=0
+    while [ "$_sfx_i" -lt 20 ]; do
+        _sfx_got=$(cat "$1" 2>/dev/null)
+        case "$1" in
+            */trigger) _sfx_got=$(active_trigger "$_sfx_got") ;;
+        esac
+        [ "$_sfx_got" = "$2" ] && return 0
+        case "$1" in
+            */trigger) ;;
+            *) return 1 ;;          # only triggers are asynchronous
+        esac
+        sleep 0.05
+        _sfx_i=$((_sfx_i+1))
+    done
+    return 1
+}
+
+set_trigger() {
+    trg=$1; fail=0; n=0
+    for d in $(discover); do
+        list=$(cat "$d/trigger" 2>/dev/null)
+        if ! trigger_supported "$list" "$trg"; then
+            echo "  ${d##*/}: trigger '$trg' not advertised -- skipped" >&2
+            fail=$((fail+1)); continue
+        fi
+        if wr "$d/trigger" "$trg"; then
+            n=$((n+1))
+        else
+            echo "  ${d##*/}: write failed or did not read back" >&2
+            fail=$((fail+1))
+        fi
+    done
+    echo "  trigger '$trg' active on $n LED(s)"
+    [ "$fail" -eq 0 ]
+}
+
+set_color() {
+    mi=$1; n=0
+    for d in $(discover); do
+        wr "$d/multi_intensity" "$mi" && n=$((n+1)) \
+            || echo "  ${d##*/}: colour write failed" >&2
+    done
+    echo "  colour '$mi' set on $n LED(s)  (explicit --color takeover)"
+}
+
+# Seed the LEDs to match the CURRENT charge state, because the trigger itself
+# will not until the next power-supply event. The kernel takes over from there,
+# including starting the blink.
+# Seed the LEDs to match the CURRENT charge state, because a power-supply
+# trigger only sets brightness on the next EVENT, not on activation.
+#
+# This must run AFTER the trigger is bound, and must never write zero. Two
+# kernel behaviours box it in, and they pull in opposite directions:
+#
+#   led_trigger_set()  tears down the previous trigger with LED_OFF, so BINDING
+#                      a trigger resets brightness to 0 -- a seed written before
+#                      binding is simply wiped.
+#   brightness_store() calls led_trigger_remove() on LED_OFF, so writing a ZERO
+#                      brightness after binding UNBINDS the trigger.
+#
+# Therefore: bind, then write the seed only when it is non-zero. When the seed
+# is zero there is nothing to do -- binding already left the LED off.
+#
+# Both halves were found on hardware. Seeding after binding with a zero silently
+# reverted every trigger to `none`; seeding before binding left
+# battery-charging-or-full bound but dark, because no power-supply event had
+# fired since activation.
+seed_state() {
+    _sfx_st=$(cat "$BATT_STATUS" 2>/dev/null)
+    _sfx_b=$(seed_for_status "$_sfx_st")
+    if [ "$_sfx_b" = 0 ]; then
+        echo "  no seed needed for battery status '${_sfx_st:-unknown}' (LED off)"
+        return 0
+    fi
+    for d in $(discover); do
+        printf '%s' "$_sfx_b" > "$d/brightness" 2>/dev/null
+    done
+    echo "  seeded brightness $_sfx_b for battery status '${_sfx_st:-unknown}'"
+    echo "  (the kernel updates it on the next charge-state change)"
+}
+
+# Guard: brightness must never be written while a trigger is bound, because a
+# zero write unbinds it. Callers seed before binding; this is the assertion.
+no_trigger_bound() {
+    for d in $(discover); do
+        _sfx_a=$(active_trigger "$(cat "$d/trigger" 2>/dev/null)")
+        [ "$_sfx_a" = none ] || [ "$_sfx_a" = unknown ] || return 1
+    done
+    return 0
+}
+
+# Is any LED showing a non-black colour? If every one is "0 0 0" a trigger will
+# drive an invisible LED, which looks exactly like the feature not working.
+any_color() {
+    for d in $(discover); do
+        is_black "$(cat "$d/multi_intensity" 2>/dev/null)" || return 0
+    done
+    return 1
+}
+
+status() {
+    printf '%-16s %-38s %-6s %s\n' LED TRIGGER BRIGHT COLOUR
+    for d in $(discover); do
+        printf '%-16s %-38s %-6s %s\n' "${d##*/}" \
+            "$(active_trigger "$(cat "$d/trigger" 2>/dev/null)")" \
+            "$(cat "$d/brightness" 2>/dev/null)" \
+            "$(cat "$d/multi_intensity" 2>/dev/null)"
+    done
+    echo
+    echo "mode:      $(get)"
+    echo "trigger:   $CHARGE_TRIGGER"
+    echo "originals: $([ -s "$ORIG_FILE" ] && wc -l < "$ORIG_FILE" || echo 0) LED(s) recorded"
+    any_color || echo "note:      every LED colour is \"0 0 0\" -- a trigger would be invisible."
+}
+
+get() { cat "$MODE_FILE" 2>/dev/null || echo off; }
+getcolor() { cat "$COLOR_FILE" 2>/dev/null || echo ""; }
+gettrigger() { echo "$CHARGE_TRIGGER"; }
+
+apply() {
+    mode=$1; color=${2:-}
+    capture
+
+    if [ -n "$color" ]; then
+        mi=$(parse_color "$color") || die "bad colour '$color' (want RRGGBB)"
+        set_color "$mi"
+        mkdir -p "$STATE_DIR"; printf '%s' "$color" > "$COLOR_FILE"
+    fi
+
+    case "$mode" in
+        charge)
+            # persist an explicit --trigger so boot re-apply keeps the choice
+            if [ "${TRIGGER_SET:-0}" = 1 ]; then
+                mkdir -p "$STATE_DIR"
+                printf '%s' "$CHARGE_TRIGGER" > "$TRIGGER_FILE"
+            fi
+            if [ -z "$color" ] && ! any_color; then
+                echo "! every stick LED colour is \"0 0 0\", so a charging trigger" >&2
+                echo "! would drive an invisible LED." >&2
+                echo "!" >&2
+                echo "! Either configure colours in Settings -> AYN -> RGB lighting" >&2
+                echo "! (AynParts owns the colour channel), or pass a colour here:" >&2
+                echo "!     stickfx charge --color 2BE0D8" >&2
+                exit 1
+            fi
+            # Bind FIRST, seed SECOND -- see seed_state() for why both
+            # orderings are constrained and why the seed must never be zero.
+            set_trigger "$CHARGE_TRIGGER" || die "could not set the charge trigger"
+            seed_state
+            ;;
+        breathe)
+            if [ -z "$color" ] && ! any_color; then
+                die "every LED colour is \"0 0 0\" -- pass --color RRGGBB or set one in AynParts"
+            fi
+            pair=$(breathe_delays "${BREATHE_ARG:-$BREATHE_MS}") \
+                || die "bad breathe period '${BREATHE_ARG:-}' (want milliseconds)"
+            on=${pair% *}; off=${pair#* }
+            # The timer trigger blinks between 0 and the LED's CURRENT
+            # brightness, and binding the trigger zeroes that brightness. So the
+            # level must be written AFTER binding, and non-zero (a zero write
+            # would unbind). Same constraint pair as seed_state().
+            set_trigger timer || die "could not set the timer trigger"
+            for d in $(discover); do
+                printf '%s' "$SEED_BRIGHTNESS" > "$d/brightness" 2>/dev/null
+            done
+            for d in $(discover); do
+                wr "$d/delay_on" "$on"  || echo "  ${d##*/}: delay_on failed" >&2
+                wr "$d/delay_off" "$off" || echo "  ${d##*/}: delay_off failed" >&2
+            done
+            echo "  breathe ${on}ms on / ${off}ms off"
+            ;;
+        usb)
+            # verification mode: usb-online is observable without a charging
+            # battery, which battery-charging is not.
+            set_trigger usb-online || die "could not set the usb-online trigger"
+            ;;
+        off)
+            restore
+            # drop the persisted takeover: after `off` the colour channel
+            # belongs to AynParts again, and a later boot must not re-take it
+            rm -f "$COLOR_FILE" "$TRIGGER_FILE"
+            ;;
+        *) die "unknown mode '$mode'" ;;
+    esac
+
+    mkdir -p "$STATE_DIR"; echo "$mode" > "$MODE_FILE"
+}
+
+# Put every LED back to what was recorded at boot.
+restore() {
+    [ -s "$ORIG_FILE" ] || { echo "no originals recorded; nothing to restore"; return 0; }
+    while IFS="$(printf '\t')" read -r name trg br mi; do
+        d="$LED_ROOT/$name"
+        [ -d "$d" ] || continue
+        [ "$trg" = unknown ] || wr "$d/trigger" "$trg" \
+            || echo "  $name: trigger restore failed" >&2
+        [ -z "$mi" ] || wr "$d/multi_intensity" "$mi" \
+            || echo "  $name: colour restore failed" >&2
+        [ -z "$br" ] || wr "$d/brightness" "$br" \
+            || echo "  $name: brightness restore failed" >&2
+    done < "$ORIG_FILE"
+    echo "  restored $(wc -l < "$ORIG_FILE") LED(s) to recorded originals"
+}
+
+selftest() {
+    t=0; f=0
+    _t() { t=$((t+1)); if [ "$1" = 0 ]; then printf '  PASS %s\n' "$2";
+           else f=$((f+1)); printf '  FAIL %s\n     %s\n' "$2" "${3:-}"; fi; }
+
+    leds=$(discover); n=$(echo "$leds" | grep -c .)
+    [ "$n" -gt 0 ] && _t 0 "discovered $n stick LED(s)" || _t 1 "discovered stick LEDs" "none"
+
+    # every discovered LED must advertise the charge trigger
+    miss=""
+    for d in $leds; do
+        trigger_supported "$(cat "$d/trigger" 2>/dev/null)" "$CHARGE_TRIGGER" \
+            || miss="$miss ${d##*/}"
+    done
+    [ -z "$miss" ] && _t 0 "all LEDs advertise $CHARGE_TRIGGER" \
+                   || _t 1 "all LEDs advertise $CHARGE_TRIGGER" "$miss"
+
+    # and the timer trigger
+    miss=""
+    for d in $leds; do
+        trigger_supported "$(cat "$d/trigger" 2>/dev/null)" timer || miss="$miss ${d##*/}"
+    done
+    [ -z "$miss" ] && _t 0 "all LEDs advertise timer" || _t 1 "all LEDs advertise timer" "$miss"
+
+    # originals must cover every discovered LED
+    if [ -s "$ORIG_FILE" ]; then
+        miss=""
+        for d in $leds; do
+            grep -q "^${d##*/}	" "$ORIG_FILE" || miss="$miss ${d##*/}"
+        done
+        [ -z "$miss" ] && _t 0 "originals cover every discovered LED" \
+                       || _t 1 "originals cover every discovered LED" "$miss"
+    else
+        _t 1 "originals recorded" "$ORIG_FILE is empty"
+    fi
+
+    # We must not be holding the colour channel unless a takeover is in effect.
+    # Compare live colour against the recorded originals: they may only differ
+    # when a --color takeover is persisted.
+    if [ -s "$ORIG_FILE" ]; then
+        drift=""
+        while IFS="$(printf '\t')" read -r name trg br mi; do
+            cur=$(cat "$LED_ROOT/$name/multi_intensity" 2>/dev/null)
+            [ "$cur" = "$mi" ] || drift="$drift $name"
+        done < "$ORIG_FILE"
+        if [ -z "$drift" ]; then
+            _t 0 "colour channel untouched (matches recorded originals)"
+        elif [ -s "$COLOR_FILE" ]; then
+            _t 0 "colour differs, but a --color takeover is recorded ($(cat "$COLOR_FILE"))"
+        else
+            _t 1 "colour channel untouched" "drifted without a takeover:$drift"
+        fi
+    else
+        _t 1 "colour channel untouched" "no originals recorded"
+    fi
+
+    echo
+    echo "  $((t-f))/$t passed"
+    [ "$f" -eq 0 ]
+}
+
+cmd=${1:-}
+[ $# -gt 0 ] && shift
+
+# one parser for every mode: an optional bare number (breathe period) and an
+# optional --color RRGGBB, in any order.
+COLOR=""; BREATHE_ARG=$BREATHE_MS; FORCE=""; TRIGGER_SET=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --color) [ $# -ge 2 ] || { echo "! --color needs RRGGBB" >&2; exit 2; }
+                 COLOR=$2; shift 2 ;;
+        --force) FORCE=--force; shift ;;
+        --trigger) [ $# -ge 2 ] || { echo "! --trigger needs a name" >&2; exit 2; }
+                 CHARGE_TRIGGER=$2; TRIGGER_SET=1; shift 2 ;;
+        [0-9]*)  BREATHE_ARG=$1; shift ;;
+        *)       echo "! unexpected argument '$1'" >&2; exit 2 ;;
+    esac
+done
+
+case "$cmd" in
+    status)   status ;;
+    charge|off|usb|breathe)
+              apply "$cmd" "$COLOR" ;;
+    get)      get ;;
+    getcolor) getcolor ;;
+    gettrigger) gettrigger ;;
+    discover) discover ;;
+    capture)  capture "$FORCE" ;;
+    selftest) selftest ;;
+    *) cat >&2 <<EOF
+usage: stickfx {status|charge|breathe [ms]|usb|off} [--color RRGGBB] [--trigger NAME]
+       stickfx {get|getcolor|gettrigger|discover|capture [--force]|selftest}
+
+  status    every stick LED's trigger, brightness and colour
+  charge    $CHARGE_TRIGGER  (blink while charging, solid when full)
+  breathe   timer trigger, default ${BREATHE_MS}ms period
+  usb       usb-online -- verification mode, observable without a charging battery
+  off       restore the originals recorded at boot
+  --color   explicitly take over the COLOUR channel (AynParts owns it otherwise)
+  --trigger pick the charge trigger and PERSIST it across reboots:
+              battery-charging-or-full           solid whenever plugged in (default)
+              battery-charging-blink-full-solid  blink charging, solid full
+              battery-full                       lit only once truly full
+
+Colour normally comes from Settings -> AYN -> RGB lighting (AynParts).
+stickfx writes only trigger/delay_on/delay_off unless --color is given.
+
+State: $STATE_DIR
+EOF
+       exit 2 ;;
+esac

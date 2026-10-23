@@ -1,0 +1,2 @@
+/sys/class/input/input28 fts_ts_secondary
+/sys/class/input/input29 fts_ts

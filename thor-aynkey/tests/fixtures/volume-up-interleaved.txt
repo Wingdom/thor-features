@@ -1,0 +1,8 @@
+[     100.000000] EV_KEY       KEY_VOLUMEUP         DOWN                
+[     100.000000] EV_SYN       SYN_REPORT           00000000            
+[     103.500000] EV_KEY       KEY_VOLUMEUP         UP                  
+[     103.500000] EV_SYN       SYN_REPORT           00000000            
+[     104.000000] EV_KEY       KEY_F24              DOWN                
+[     104.200000] EV_KEY       KEY_F24              UP                  
+[     105.000000] EV_KEY       KEY_VOLUMEUP         DOWN                
+[     105.100000] EV_KEY       KEY_VOLUMEUP         UP                  

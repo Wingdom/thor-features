@@ -1,0 +1,36 @@
+# Key layout for the AYN Thor's gpio-keys device.
+#
+# Why this file exists:
+#   The kernel marks the AYN button as `gpio-key,wakeup` in AYN's own device
+#   tree, but Android reported `IsWaking: false`. Those are different things:
+#   the kernel flag lets the key wake the SoC from suspend, while Android's
+#   IsWaking decides whether the key turns the *screen* on, and that comes from
+#   the key layout. Stock's own tip string promised the AYN key would "wake up
+#   the screen", so stock supplied this flag. This restores it.
+#
+#   Measured first, on 2026-10-22: with the device dozing, an injected AYN
+#   press WAS delivered to the daemon (it reads the evdev node directly, which
+#   works regardless) but the device stayed `Dozing`. So the flag is the
+#   missing piece, not the delivery.
+#
+# Why it is named this:
+#   `dumpsys input` reports the device as
+#     Identifier: bus=0x0019, vendor=0x0001, product=0x0001, version=0x0100
+#   and Android prefers Vendor_XXXX_Product_XXXX.kl over Generic.kl. There was
+#   no vendor file for this device, so nothing is being overridden.
+#
+# Why VOLUME_UP is here:
+#   A vendor key layout REPLACES Generic.kl for this device - it does not merge
+#   with it. gpio-keys carries exactly two keys, KEY_VOLUMEUP (115) and
+#   KEY_F24 (194), so omitting volume up would silently break the volume
+#   button. There is a test asserting it stays.
+#
+#   Both lines match Generic.kl's mappings (lines 137 and 216). The only
+#   change is the WAKE flag on F24; volume up is deliberately left without it,
+#   so this module changes exactly one behaviour.
+#
+# gpio-keys also reports SW_LID. Switches are not mapped by key layout files,
+# so there is nothing to carry over for it.
+
+key 115   VOLUME_UP
+key 194   F24               WAKE

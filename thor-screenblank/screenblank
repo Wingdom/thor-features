@@ -1,0 +1,255 @@
+#!/system/bin/sh
+# screenblank - genuinely turn one of the AYN Thor's two internal panels off.
+#
+# Why this exists, and why it is not stock's mechanism:
+#
+#   Stock's dual-screen app never powered a panel down. It covered the
+#   target display with an opaque system window (type 2021) and set
+#   sys.temp.disabled.touch to kill touch on it. Neither half survives on
+#   LineageOS: 2021 is TYPE_BOOT_PROGRESS, signature-level, and the property
+#   has no consumer anywhere on this build (zero hits in AYN's own 148 MB
+#   kernel source, with a positive control proving the search worked).
+#
+#   The unprivileged substitute for 2021 is TYPE_APPLICATION_OVERLAY. It was
+#   built and tested on hardware 2026-10-22 and rejected on two counts, both
+#   observed on the device:
+#     - it cannot darken the panel, only paint it black. The user's words for
+#       the result were "a black but lit up panel".
+#     - it cannot cover the status or navigation bars, which are higher in
+#       z-order, so the notification shade stayed reachable on a "off" screen.
+#
+#   What does work is the lever stock itself used elsewhere: its own settings
+#   app wrote bl_power on panel0 to blank the main screen while video went out
+#   over HDMI. The same node on panel1 turns the
+#   bottom panel genuinely dark - confirmed by eye on 2026-10-22, "no glow, it
+#   looked off".
+#
+#   bl_power alone is not enough. With the panel dark, 24 touch down/up pairs
+#   were recorded on the bottom digitiser - the user pulled the notification
+#   shade down on a screen they could not see. Disabling that digitiser's
+#   interrupt takes touch to exactly zero events. So "off" is two writes, and
+#   a revert that misses either one leaves a broken screen.
+#
+# Why nothing here is resolved by number:
+#   Input event nodes and sysfs input indices are assigned at boot and DO move
+#   on this device - gpio-keys was /dev/input/event0 last session and
+#   /dev/input/event3 this one, after a controller enumerated. Panels, touch
+#   devices and displays are all resolved by name.
+#
+# Why brightness is never restored:
+#   The recorded "original" of 205 was simply what the node held at scan time.
+#   It read 3117 an hour later: the framework owns that node and moves it.
+#   bl_power is the only part of this that is ours, so it is the only part we
+#   put back.
+#
+# Usage:  screenblank status
+#         screenblank off    <top|bottom>
+#         screenblank on     <top|bottom>
+#         screenblank toggle <top|bottom>
+#         screenblank restore          # unblank everything, unconditionally
+#
+# Safety:
+#   - Refuses to blank a panel while the other one is already blanked. Both
+#     dark is a device that looks dead.
+#   - `restore` is the kill switch and never fails on "was not blanked":
+#     both writes are idempotent (verified - repeating `fts_irq=1` leaves
+#     irq_depth at 0 rather than underflowing).
+#   - Writes no thermal and no battery node. A reboot clears both writes.
+
+set -u
+
+BL_DIR=/sys/class/backlight
+# No state is recorded anywhere. Every answer this script gives is read live
+# from the two nodes, which is the only thing that stays correct across a
+# suspend: the framework restores the backlight and the touch driver
+# re-enables its own IRQ on resume, both without telling us. A remembered
+# "the bottom screen is off" would have survived that and been wrong.
+
+die() { echo "screenblank: $*" >&2; exit 1; }
+
+# --- name resolution ----------------------------------------------------------
+# Map our two words to the kernel's two names. "top" is the main 1920x1080
+# panel (panel0 / fts_ts); "bottom" is the 3.92" one (panel1 / fts_ts_secondary).
+# The pairing was confirmed on hardware: blanking panel1 darkened the bottom
+# screen, and touches on the bottom screen arrived on fts_ts_secondary.
+backlight_for() {
+    case "$1" in
+        top)    echo "$BL_DIR/panel0-backlight" ;;
+        bottom) echo "$BL_DIR/panel1-backlight" ;;
+        *)      return 1 ;;
+    esac
+}
+
+touch_name_for() {
+    case "$1" in
+        top)    echo "fts_ts" ;;
+        bottom) echo "fts_ts_secondary" ;;
+        *)      return 1 ;;
+    esac
+}
+
+# Resolve a touch device's sysfs directory from its name. Reads the same
+# /sys/class/input/input*/name listing that _resolve_stdin is tested against.
+input_dir_for() {
+    want=$(touch_name_for "$1") || return 1
+    for d in /sys/class/input/input*; do
+        [ -r "$d/name" ] || continue
+        n=$(cat "$d/name" 2>/dev/null)
+        # Exact match: "fts_ts" must not resolve to "fts_ts_secondary".
+        [ "$n" = "$want" ] || continue
+        [ -e "$d/device/fts_irq" ] || continue
+        echo "$d/device"
+        return 0
+    done
+    return 1
+}
+
+# The name-matching rule on its own, so the "fts_ts must not match
+# fts_ts_secondary" case can be tested on the host without /sys.
+# stdin: lines of "<dir> <name>"; argv: the wanted name.
+_resolve_stdin() {
+    want=$1
+    while read -r dir name; do
+        [ "$name" = "$want" ] && { echo "$dir"; return 0; }
+    done
+    return 1
+}
+
+# --- state --------------------------------------------------------------------
+is_dark() {
+    bl=$(backlight_for "$1") || return 1
+    v=$(cat "$bl/bl_power" 2>/dev/null)
+    # bl_power is an FB_BLANK level, not a boolean. 0 is unblanked; 1 is
+    # FB_BLANK_NORMAL, which is what we write; 4 is FB_BLANK_POWERDOWN, which
+    # is what the framework writes when the device dozes - observed on this
+    # device 2026-10-22 during a suspend test. Treat any non-zero as "not
+    # lit": an exact test for "1" would have reported a powered-down panel as
+    # on.
+    case "$v" in
+        ""|0) return 1 ;;
+        *)    return 0 ;;
+    esac
+}
+
+touch_disabled() {
+    d=$(input_dir_for "$1") || return 1
+    # fts_irq reports "irq_depth:N". 0 is enabled; anything higher is disabled.
+    case "$(cat "$d/fts_irq" 2>/dev/null)" in
+        *irq_depth:0) return 1 ;;
+        *irq_depth:*) return 0 ;;
+        *)            return 1 ;;
+    esac
+}
+
+# --- the writes ---------------------------------------------------------------
+blank() {
+    which=$1
+    other=$([ "$which" = top ] && echo bottom || echo top)
+
+    if is_dark "$which"; then
+        echo "screenblank: $which screen is already off"
+        return 0
+    fi
+    # Never both. The way back from a fully dark device is a reboot, and that
+    # is not an acceptable state to be one bug away from.
+    if is_dark "$other"; then
+        die "refusing: the $other screen is already off. Turn it on first."
+    fi
+
+    bl=$(backlight_for "$which")  || die "unknown screen '$which'"
+    d=$(input_dir_for "$which")   || die "no touch device found for '$which'"
+
+    # Touch first, then light. If the second write fails the screen is still
+    # visible, which is the recoverable way round; doing it the other way
+    # would leave a dark screen that still takes touches.
+    echo 0 > "$d/fts_irq"        || die "could not disable touch on $which"
+    echo 1 > "$bl/bl_power"      || { echo 1 > "$d/fts_irq"; die "could not blank $which"; }
+
+    verify_dark "$which"
+}
+
+unblank() {
+    which=$1
+    bl=$(backlight_for "$which") || die "unknown screen '$which'"
+
+    # Light first, then touch - the reverse of blanking, so that at no point is
+    # there a dark screen accepting input.
+    [ -w "$bl/bl_power" ] && echo 0 > "$bl/bl_power"
+    if d=$(input_dir_for "$which"); then
+        echo 1 > "$d/fts_irq" 2>/dev/null
+    fi
+
+    echo "screenblank: $which screen on"
+}
+
+# Read back both halves. Project rule: never trust an exit code. Note this
+# verifies our two *nodes*, not that the panel is physically dark - no signal
+# on this device distinguishes lit from dark, which is why the human stays the
+# final oracle.
+verify_dark() {
+    which=$1
+    ok=1
+    is_dark "$which"        || { echo "screenblank: WARNING bl_power did not take on $which" >&2; ok=0; }
+    touch_disabled "$which" || { echo "screenblank: WARNING touch still enabled on $which" >&2; ok=0; }
+    [ "$ok" = 1 ] && echo "screenblank: $which screen off (dark, touch disabled)"
+    [ "$ok" = 1 ]
+}
+
+cmd_status() {
+    # Say so when the device is not awake. While dozing, the touch driver
+    # disables BOTH digitiser IRQs and the framework writes bl_power=4, so
+    # every column below reads "off"/"disabled" through no action of ours.
+    # Without this line that output looks like a device whose touch we broke -
+    # it briefly fooled the author on 2026-10-22.
+    wake=$(dumpsys power 2>/dev/null | grep -oE "mWakefulness=[A-Za-z]+" | head -1)
+    case "$wake" in
+        *Awake|"") ;;
+        *) echo "note    : device is ${wake#mWakefulness=} - while the screen is off the"
+           echo "          driver blanks both panels and disables both digitisers itself."
+           echo "          These readings only mean something while awake."
+           echo ;;
+    esac
+    for s in top bottom; do
+        bl=$(backlight_for "$s")
+        d=$(input_dir_for "$s" 2>/dev/null || echo "<not found>")
+        state=$(is_dark "$s" && echo OFF || echo on)
+        tch=$(touch_disabled "$s" && echo disabled || echo enabled)
+        printf '%-7s screen : %-3s   touch %-8s  backlight %s\n' "$s" "$state" "$tch" "$bl"
+        printf '%-7s touch  : %s\n' "" "$d"
+    done
+}
+
+cmd_restore() {
+    # The kill switch. Unconditional, idempotent, and it does not consult
+    # recorded state - if that state is wrong, restore still has to work.
+    for s in top bottom; do
+        bl=$(backlight_for "$s")
+        [ -e "$bl/bl_power" ] && echo 0 > "$bl/bl_power" 2>/dev/null
+        if d=$(input_dir_for "$s" 2>/dev/null); then echo 1 > "$d/fts_irq" 2>/dev/null; fi
+    done
+    echo "screenblank: both screens on, touch enabled"
+}
+
+case "${1:-}" in
+    status)  cmd_status ;;
+    off)     [ $# -ge 2 ] || die "usage: screenblank off <top|bottom>";    blank "$2" ;;
+    on)      [ $# -ge 2 ] || die "usage: screenblank on <top|bottom>";     unblank "$2" ;;
+    toggle)  [ $# -ge 2 ] || die "usage: screenblank toggle <top|bottom>"
+             if is_dark "$2"; then unblank "$2"; else blank "$2"; fi ;;
+    restore) cmd_restore ;;
+    _resolve_stdin) shift; _resolve_stdin "$@" ;;
+    *)
+        cat <<USAGE
+screenblank - turn one of the Thor's two internal panels genuinely off
+
+  screenblank status
+  screenblank off    <top|bottom>
+  screenblank on     <top|bottom>
+  screenblank toggle <top|bottom>
+  screenblank restore      kill switch: both screens on, touch enabled
+
+"off" is two writes: bl_power=1 on that panel's backlight (dark, no glow) and
+fts_irq=0 on that panel's digitiser (touch dead). Both are undone by a reboot.
+USAGE
+        [ "${1:-}" = "" ] && exit 0 || exit 2 ;;
+esac

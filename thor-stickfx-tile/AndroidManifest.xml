@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.thorfeatures.stickfx">
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_stick"
+        android:allowBackup="false">
+
+        <!-- No Activity: the tile is driven entirely by the system.
+             BIND_QUICK_SETTINGS_TILE must be held by US so only the system can
+             bind this service. -->
+        <service
+            android:name=".StickTileService"
+            android:label="@string/tile_name"
+            android:icon="@drawable/ic_stick"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

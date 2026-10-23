@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thor Sticks</string>
+    <string name="tile_name">Stick LEDs</string>
+    <string name="tile_label_fmt">Sticks: %1$s</string>
+    <string name="tile_unavailable">Sticks: no root</string>
+    <string name="picker_title">Stick LED effect</string>
+    <string name="rgb_panel">RGB colours…</string>
+    <string name="no_root_title">Root required</string>
+    <string name="no_root_body">The thor-stickfx Magisk module must be installed and this app granted Superuser access.\n\nColour is set in Settings → AYN → RGB lighting; this tile only controls the effect layer on top of it.</string>
+    <string name="ok">OK</string>
+</resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material You without a support library.
+
+         The system_* colour resources are the real dynamic palette the
+         platform derives from the wallpaper (API 31+), so referencing them
+         directly gives Material You theming in a plain platform app with no
+         Gradle, no AppCompat and no Material Components dependency - which is
+         what the rest of this project builds with (aapt2 + javac + d8). -->
+    <style name="PanelTheme" parent="@android:style/Theme.DeviceDefault.Dialog">
+        <!-- Floating, bottom-anchored, over whatever is running. The stock
+             panel did the same: the photo of it shows the status bar still
+             visible above the panel, not covered. -->
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.45</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.InputMethod</item>
+    </style>
+</resources>

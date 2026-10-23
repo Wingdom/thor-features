@@ -1,0 +1,233 @@
+#!/system/bin/sh
+# screenmove - move the foreground app between the AYN Thor's two screens.
+#
+# Why this exists:
+#   LineageOS starts an activity on whichever display currently holds top
+#   focus (`mTopFocusedDisplayId`). On the Thor the bottom screen is
+#   home-capable (`isHomeSupported="true"` for display 1 in
+#   /vendor/etc/display_settings.xml), so a launcher runs there, touching it
+#   makes it the focus, and the next app opens on the 3.92" panel. There is no
+#   user-facing way to move it back.
+#
+# Why `am display move-stack` and not something cleverer:
+#   Moving an existing task across displays needs MANAGE_ACTIVITY_TASKS, which
+#   is signature-level - no ordinary app can do it, which is why no launcher
+#   offers it. The activity manager shell already exposes the operation, so as
+#   root we get it for free with no framework patch and no privileged app.
+#
+#   Verified on hardware 2026-10-22: a task moved 0 -> 1 -> 0 with a dumpsys
+#   read-back after each move, and the round trip restored the exact baseline
+#   (same display, same visibility, same pid).
+#
+# What this does NOT do:
+#   It does not change where apps launch by default. That is a focus-policy
+#   question and the framework switch for it (canStealTopFocus) is not
+#   reachable from a module. `dontMoveToTop` reaches it but turns the bottom
+#   panel off entirely - tested, rejected.
+#
+# Usage:  screenmove status
+#         screenmove toggle      [--dry-run]
+#         screenmove to-top      [--dry-run]
+#         screenmove to-bottom   [--dry-run]
+#
+# Safety:
+#   This writes no hardware node and no persistent state. It issues one
+#   activity-manager call that a reboot undoes. Disabling or uninstalling the
+#   module removes the script and changes nothing else - there is no boot-time
+#   behaviour to restore.
+
+set -u
+
+TOP_DISPLAY=0   # the main 1920x1080 panel is always the default display
+
+# --- display discovery --------------------------------------------------------
+# The bottom panel is the other INTERNAL display. Resolve it rather than
+# hardcoding 1: display ids are assigned at boot, and this is the same rule
+# stock's own dual-screen app used: it took the first display with id != 0.
+bottom_display() {
+    dumpsys display 2>/dev/null \
+      | tr ',' '\n' \
+      | awk '
+          /DisplayViewport\{type=INTERNAL/ { internal=1 }
+          internal && /displayId=/ {
+              if (match($0, /displayId=[0-9]+/)) {
+                  id = substr($0, RSTART+10, RLENGTH-10)
+                  if (id != 0) { print id; exit }
+              }
+              internal=0
+          }'
+}
+
+# --- the parser ---------------------------------------------------------------
+# Reads `dumpsys activity activities` on stdin, prints the root-task id of the
+# topmost *movable* task on display $1, or nothing if there is none.
+#
+# Movable means type=standard and visible=true. Deliberately excluded:
+#   type=home     - the launcher; moving it would strand that display
+#   type=recents  - transient
+#   type=undefined - Bubbles / SplitRoot containers, not user apps
+#
+# Three things this has to get right, each learned from real output:
+#   1. Only root tasks count. Root tasks are at exactly two spaces of indent;
+#      children are deeper and carry rootTaskId=. `am display move-stack` wants
+#      the root id, so matching a child id would silently move the wrong thing.
+#   2. Display sections are NOT in id order - the dump lists the focused
+#      display first, so "Display #1" can precede "Display #0".
+#   3. The header must be matched as `^Display #N (activities`, because later
+#      parts of the same dump repeat per-display blocks under other headers.
+#      Matching loosely picks up those and returns stale ids.
+parse_movable() {
+    awk -v want="$1" '
+      /^Display #[0-9]+ \(activities/ {
+          d = $2; sub(/^#/, "", d); cur = d; insec = 1; next
+      }
+      /^[A-Za-z]/ && !/^Display #/ { insec = 0 }
+      insec && /^  \* Task\{/ {
+          if (cur != want || found != "") next
+          type = ""; vis = ""
+          if (match($0, /type=[a-z]+/))          type = substr($0, RSTART+5, RLENGTH-5)
+          if (match($0, /visible=(true|false)/)) vis  = substr($0, RSTART+8, RLENGTH-8)
+          if (type == "standard" && vis == "true" && match($0, /#[0-9]+/))
+              found = substr($0, RSTART+1, RLENGTH-1)
+      }
+      END { if (found != "") print found }'
+}
+
+focused_display() {
+    dumpsys window 2>/dev/null \
+      | sed -n 's/.*mTopFocusedDisplayId=\([0-9]*\).*/\1/p' | head -1
+}
+
+# --- operations ---------------------------------------------------------------
+
+die() { echo "screenmove: $*" >&2; exit 1; }
+
+# move_to <destination display id>
+move_to() {
+    dest=$1
+    dry=${2:-}
+
+    bottom=$(bottom_display)
+    [ -n "$bottom" ] || die "could not find a second internal display"
+
+    case "$dest" in
+      "$TOP_DISPLAY") src=$bottom ;;
+      "$bottom")      src=$TOP_DISPLAY ;;
+      *) die "unknown destination display '$dest'" ;;
+    esac
+
+    # Always read ids fresh. They are reassigned on every launch, so a cached
+    # id moves whatever happens to hold that number now.
+    acts=$(dumpsys activity activities 2>/dev/null)
+
+    task=$(printf '%s\n' "$acts" | parse_movable "$src")
+    if [ -z "$task" ]; then
+        # Fall back to the destination's own top task so that `toggle` is
+        # still meaningful when the source display shows only its launcher.
+        other=$(printf '%s\n' "$acts" | parse_movable "$dest")
+        if [ -n "$other" ]; then
+            echo "nothing to move from display $src (display $dest already has task #$other)"
+        else
+            echo "nothing to move: no visible app on either screen"
+        fi
+        return 1
+    fi
+
+    if [ -n "$dry" ]; then
+        echo "would move task #$task from display $src to display $dest"
+        return 0
+    fi
+
+    am display move-stack "$task" "$dest" >/dev/null 2>&1
+
+    # Verify rather than trust the exit code: `am` reports success for a call
+    # the window manager then declines. Re-read and confirm the task actually
+    # landed on the destination.
+    after=$(dumpsys activity activities 2>/dev/null | parse_movable "$dest")
+    if [ "$after" = "$task" ]; then
+        echo "moved task #$task to display $dest"
+        return 0
+    fi
+    echo "move of task #$task to display $dest did not take effect" >&2
+    return 1
+}
+
+cmd_status() {
+    bottom=$(bottom_display)
+    focus=$(focused_display)
+    acts=$(dumpsys activity activities 2>/dev/null)
+
+    echo "top screen    : display $TOP_DISPLAY"
+    echo "bottom screen : display ${bottom:-<not found>}"
+    echo "focused       : display ${focus:-<unknown>}"
+
+    t=$(printf '%s\n' "$acts" | parse_movable "$TOP_DISPLAY")
+    echo "movable on top    : ${t:-<none, launcher only>}"
+    if [ -n "$bottom" ]; then
+        b=$(printf '%s\n' "$acts" | parse_movable "$bottom")
+        echo "movable on bottom : ${b:-<none, launcher only>}"
+    fi
+}
+
+cmd_toggle() {
+    dry=${1:-}
+    bottom=$(bottom_display)
+    [ -n "$bottom" ] || die "could not find a second internal display"
+    acts=$(dumpsys activity activities 2>/dev/null)
+
+    # Prefer whatever the focused display is showing; that is the app the user
+    # is looking at. If the focused display has only its launcher, act on the
+    # other screen instead, so one tile can serve both directions.
+    focus=$(focused_display)
+    [ -n "$focus" ] || focus=$TOP_DISPLAY
+
+    if [ -n "$(printf '%s\n' "$acts" | parse_movable "$focus")" ]; then
+        if [ "$focus" = "$TOP_DISPLAY" ]; then move_to "$bottom" "$dry"
+        else move_to "$TOP_DISPLAY" "$dry"; fi
+    elif [ "$focus" = "$TOP_DISPLAY" ]; then
+        move_to "$TOP_DISPLAY" "$dry"
+    else
+        move_to "$bottom" "$dry"
+    fi
+}
+
+usage() {
+    cat <<'EOF'
+screenmove - move the foreground app between the Thor's two screens
+
+  screenmove status                 show displays and what can be moved
+  screenmove toggle    [--dry-run]  move the focused screen's app to the other
+  screenmove to-top    [--dry-run]  move the bottom screen's app to the top
+  screenmove to-bottom [--dry-run]  move the top screen's app to the bottom
+
+Needs root. Moves nothing persistent; a reboot undoes any move.
+EOF
+}
+
+CMD=${1:-}
+[ $# -gt 0 ] && shift
+
+# Test entry point, handled before option parsing because it takes a positional
+# argument rather than a flag. Reads dumpsys text on stdin so the parser can be
+# exercised on the host against recorded fixtures, with no device attached.
+if [ "$CMD" = "_parse_stdin" ]; then
+    parse_movable "${1:-0}"
+    exit 0
+fi
+
+DRY=""
+for a in "$@"; do
+    case "$a" in
+      --dry-run) DRY=1 ;;
+      *) die "unknown option '$a'" ;;
+    esac
+done
+
+case "$CMD" in
+  status)     cmd_status ;;
+  toggle)     cmd_toggle "$DRY" ;;
+  to-top)     move_to "$TOP_DISPLAY" "$DRY" ;;
+  to-bottom)  b=$(bottom_display); [ -n "$b" ] || die "no second display"; move_to "$b" "$DRY" ;;
+  ""|-h|--help|help) usage ;;
+  *) usage; exit 2 ;;
+esac

@@ -1,0 +1,7 @@
+add device 1: /dev/input/event3
+  name:     "gpio-keys"
+could not get driver version for /dev/input/mice, Not a typewriter
+[    2000.000000] EV_KEY       KEY_F24              DOWN                
+[    2000.150000] EV_KEY       KEY_F24              UP                  
+add device 2: /dev/input/event6
+  name:     "Xbox Wireless Controller"

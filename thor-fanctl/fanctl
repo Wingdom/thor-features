@@ -1,0 +1,339 @@
+#!/system/bin/sh
+# fanctl - fan policy for the AYN Thor on LineageOS, via thermal trip points.
+#
+# Why trip points and not pwm1:
+#   The fan is a thermal cooling device (cooling_device*/type == pwm-fan) driven
+#   by the step_wise governor from several zones. Writing pwm1 or cur_state is
+#   overwritten at the next polling interval. Moving a *trip* changes the policy
+#   input instead, so the governor stays in charge and every trip remains
+#   present - thermal protection is never removed, only rescheduled.
+#
+#   Verified on 2026-10-20: lowering usb-therm trip2 below the current reading
+#   put the fan at state 6 / pwm 120 within one polling interval, and restoring
+#   it returned to state 0 / pwm 0.
+#
+# Why usb-therm is special:
+#   Its trips (43C -> fan state 6-7, 45C -> 7-8) are inherited verbatim from
+#   Qualcomm's kalama-sg-hhg reference design, where they drove a 0-100
+#   "fancontroller" at 80/100. On the Thor they land on a 9-state pwm-fan, so a
+#   connector at 43C demands the same fan speed the SoC only demands at 80C.
+#
+# Usage:  fanctl status | quiet | default | performance [--dry-run]
+#
+# Safety invariants, enforced in plan_for_mode():
+#   - never raise a CPU/GPU fan trip above its original value (that would delay
+#     cooling and reduce protection)
+#   - never move usb-therm outside [USB_FLOOR, USB_CEILING]
+#   - never touch a trip that is not bound to the fan cooling device
+#   - never switch a zone to the user_space governor
+#   - originals are recorded once and are the only source for "default"
+
+set -u
+
+STATE_DIR=${FANCTL_STATE_DIR:-/data/adb/thor-fanctl}
+ORIG_FILE="$STATE_DIR/original.tsv"
+MODE_FILE="$STATE_DIR/mode"
+
+# --- tunables -----------------------------------------------------------------
+# usb-therm target for non-default modes. 60C chosen deliberately: ~20C above
+# observed plugged-in idle (~40C), well under typical USB-C connector ratings
+# (~85C) and far under Qualcomm's own 125C limit for this ADC channel. A chassis
+# fan barely cools a connector anyway - the effective mitigation is charge
+# current, which is not wired to this sensor in the device tree.
+USB_QUIET_TEMP=${USB_QUIET_TEMP:-60000}
+USB_GAP=${USB_GAP:-2000}          # keep trip3 above trip2 by the stock margin
+USB_CEILING=${USB_CEILING:-70000} # hard clamp, never exceeded
+USB_FLOOR=${USB_FLOOR:-35000}
+
+# The three user-facing tiers differ only in how far the CPU/GPU fan ladder is
+# shifted down; all three apply the same usb-therm fix. Offsets are negative
+# only -- lowering a fan trip adds cooling, so it is safe by construction.
+#
+#   quiet        0       stock ladder: fan off at idle, ramps at 50/55 C
+#   balanced    -5000    ramps at 45/50 C, still off at idle (~41 C)
+#   performance -10000   ramps at 40/45 C, so lightly on at idle
+#
+# "LineageOS stock" is not a mode: it is the module being disabled. `default`
+# remains as a CLI restore operation (uninstall.sh uses it), not a tier.
+BALANCED_OFFSET=${BALANCED_OFFSET:--5000}
+PERF_OFFSET=${PERF_OFFSET:--10000}
+PERF_MIN_TRIP=${PERF_MIN_TRIP:-40000}  # don't push any trip below this
+
+# ---------------------------------------------------------------- pure logic --
+# plan_for_mode <mode>
+#   stdin : discovered trip table, one per line:  <zonetype> <path> <current>
+#   stdout: write plan, one per line:             <path> <value>
+#   Pure: no device access, no globals beyond the tunables. Unit-tested on host.
+plan_for_mode() {
+    _mode=$1
+    while IFS=' ' read -r _ztype _path _orig; do
+        [ -n "${_path:-}" ] || continue
+        case "$_ztype" in
+        usb-therm)
+            case "$_mode" in
+            default) _val=$_orig ;;
+            quiet|balanced|performance)
+                # first fan trip gets the target; any later trip keeps its
+                # original offset above the first, preserving the ladder shape
+                if [ "${_usb_seen:-0}" = 0 ]; then
+                    _val=$USB_QUIET_TEMP
+                    _usb_first_orig=$_orig
+                    _usb_seen=1
+                else
+                    _delta=$(( _orig - _usb_first_orig ))
+                    [ "$_delta" -lt "$USB_GAP" ] && _delta=$USB_GAP
+                    _val=$(( USB_QUIET_TEMP + _delta ))
+                fi
+                ;;
+            *) _val=$_orig ;;
+            esac
+            # clamp
+            [ "$_val" -gt "$USB_CEILING" ] && _val=$USB_CEILING
+            [ "$_val" -lt "$USB_FLOOR" ]   && _val=$USB_FLOOR
+            ;;
+        *)
+            case "$_mode" in
+            balanced)    _off=$BALANCED_OFFSET ;;
+            performance) _off=$PERF_OFFSET ;;
+            *)           _off=0 ;;
+            esac
+            _val=$(( _orig + _off ))
+            [ "$_val" -lt "$PERF_MIN_TRIP" ] && _val=$PERF_MIN_TRIP
+            # INVARIANT: never above original, whatever the tunable says
+            [ "$_val" -gt "$_orig" ] && _val=$_orig
+            ;;
+        esac
+        printf '%s %s\n' "$_path" "$_val"
+    done
+}
+
+# Guard so the host test harness can source this file for plan_for_mode only.
+[ "${FANCTL_LIB:-0}" = 1 ] && return 0 2>/dev/null
+
+# ------------------------------------------------------------- device layer --
+die() { echo "fanctl: $*" >&2; exit 1; }
+
+# Walk every zone and emit the trips bound to the pwm-fan cooling device.
+# Emits: <zonetype> <trip_temp_path> <current_value>
+discover() {
+    for z in /sys/class/thermal/thermal_zone*; do
+        [ -d "$z" ] || continue
+        ztype=$(cat "$z/type" 2>/dev/null) || continue
+        for c in "$z"/cdev*; do
+            case "$c" in *_trip_point|*_weight) continue ;; esac
+            [ -e "$c/type" ] || continue
+            [ "$(cat "$c/type" 2>/dev/null)" = "pwm-fan" ] || continue
+            tp=$(cat "${c}_trip_point" 2>/dev/null)
+            [ -n "$tp" ] && [ "$tp" -ge 0 ] 2>/dev/null || continue
+            p="$z/trip_point_${tp}_temp"
+            [ -w "$p" ] || continue
+            printf '%s %s %s\n' "$ztype" "$p" "$(cat "$p")"
+        done
+    done
+}
+
+save_originals() {
+    [ -s "$ORIG_FILE" ] && return 0
+    mkdir -p "$STATE_DIR" || die "cannot create $STATE_DIR"
+    discover > "$ORIG_FILE" || die "discovery failed"
+    [ -s "$ORIG_FILE" ] || die "no fan-bound trips found - refusing to continue"
+    echo "fanctl: recorded $(wc -l < "$ORIG_FILE") original trip values"
+}
+
+# settle - force each affected zone to re-evaluate after a trip change.
+#
+# These zones have polling-delay = <0> in the device tree (there is no
+# polling_delay sysfs attribute), so they only re-evaluate on a sensor threshold
+# event or on a trip write. Without this, a fan state latched BEFORE our change
+# persists indefinitely. Observed 2026-10-20: after applying quiet at boot the
+# fan sat at state 6 / pwm 120 for minutes with every zone at ~40 C, and a
+# single re-write of one trip dropped it straight to 0.
+settle() {
+    [ -s "$ORIG_FILE" ] || return 0
+    awk '{ print $2 }' "$ORIG_FILE" | sed 's|/trip_point_[0-9]*_temp$||' | sort -u | while read -r zd; do
+        tp=$(awk -v z="$zd/" 'index($2, z) == 1 { print $2; exit }' "$ORIG_FILE")
+        [ -n "$tp" ] && [ -w "$tp" ] || continue
+        v=$(cat "$tp" 2>/dev/null)
+        [ -n "$v" ] && printf '%s\n' "$v" > "$tp" 2>/dev/null
+    done
+}
+
+apply() {
+    mode=$1; dry=${2:-0}
+    case "$mode" in quiet|balanced|default|performance) ;; *) die "unknown mode: $mode" ;; esac
+    save_originals
+    fail=0 n=0
+    # plan is always computed against ORIGINALS, never against current values,
+    # so repeated applies cannot drift.
+    plan_for_mode "$mode" < "$ORIG_FILE" | while IFS=' ' read -r path val; do
+        cur=$(cat "$path" 2>/dev/null)
+        if [ "$dry" = 1 ]; then
+            printf '  would set %-52s %s -> %s\n' "$path" "$cur" "$val"
+            continue
+        fi
+        [ "$cur" = "$val" ] && { printf '  ok   %-52s %s (unchanged)\n' "$path" "$val"; continue; }
+        echo "$val" > "$path" 2>/dev/null
+        rb=$(cat "$path" 2>/dev/null)          # verify by read-back, not exit code
+        if [ "$rb" = "$val" ]; then
+            printf '  ok   %-52s %s -> %s\n' "$path" "$cur" "$val"
+        else
+            printf '  FAIL %-52s wanted %s, reads %s\n' "$path" "$val" "$rb"
+            fail=1
+        fi
+        n=$((n+1))
+    done
+    [ "$dry" = 1 ] && return 0
+    # trips alone are not enough: nudge every affected zone so the governor
+    # re-evaluates, otherwise a previously latched fan state can persist.
+    settle
+    mkdir -p "$STATE_DIR" && echo "$mode" > "$MODE_FILE"
+    cdv=$(for c in /sys/class/thermal/cooling_device*; do
+            [ "$(cat "$c/type" 2>/dev/null)" = "pwm-fan" ] && cat "$c/cur_state"; done | head -1)
+    echo "  fan now at state ${cdv:-?} (pwm $(cat /sys/class/hwmon/hwmon0/pwm1 2>/dev/null))"
+    return $fail
+}
+
+status() {
+    echo "mode (persisted): $(cat "$MODE_FILE" 2>/dev/null || echo '<none>')"
+    cd=$(for c in /sys/class/thermal/cooling_device*; do
+            [ "$(cat "$c/type" 2>/dev/null)" = "pwm-fan" ] && echo "$c"; done | head -1)
+    if [ -n "$cd" ]; then
+        echo "fan: $(basename "$cd") state $(cat "$cd/cur_state")/$(cat "$cd/max_state")  pwm1=$(cat /sys/class/hwmon/hwmon0/pwm1 2>/dev/null)"
+    fi
+    echo
+    printf '  %-10s %-46s %8s %8s %8s\n' ZONE TRIP NOW ORIG TEMP
+    discover | while IFS=' ' read -r ztype path cur; do
+        orig=$(awk -v p="$path" '$2==p{print $3}' "$ORIG_FILE" 2>/dev/null)
+        ztemp=$(cat "$(dirname "$path")/temp" 2>/dev/null)
+        printf '  %-10s %-46s %8s %8s %8s\n' "$ztype" "$(basename "$path")" "$cur" "${orig:-?}" "${ztemp:-?}"
+    done
+}
+
+# capture [--force]
+#   Record stock trip values. At boot the kernel has just parsed the device
+#   tree, so every trip is guaranteed stock -- that is the only moment we can
+#   capture with certainty, which is why service.sh calls this with --force.
+capture() {
+    mkdir -p "$STATE_DIR" || die "cannot create $STATE_DIR"
+    if [ "${1:-}" = "--force" ] || [ ! -s "$ORIG_FILE" ]; then
+        tmp="$ORIG_FILE.new"
+        discover > "$tmp" || die "discovery failed"
+        [ -s "$tmp" ] || { rm -f "$tmp"; die "no fan-bound trips found - refusing to overwrite originals"; }
+        mv "$tmp" "$ORIG_FILE"
+        echo "fanctl: captured $(wc -l < "$ORIG_FILE") stock trip values"
+    fi
+}
+
+# get - current mode, one word, for a QS tile or any caller that wants it cheap
+get() { cat "$MODE_FILE" 2>/dev/null || echo default; }
+
+# json - machine-readable status for the app layer
+json() {
+    cd=$(for c in /sys/class/thermal/cooling_device*; do
+            [ "$(cat "$c/type" 2>/dev/null)" = "pwm-fan" ] && echo "$c"; done | head -1)
+    printf '{"mode":"%s","fan_state":%s,"fan_max_state":%s,"pwm1":%s,"trips":[' \
+        "$(get)" \
+        "$(cat "$cd/cur_state" 2>/dev/null || echo null)" \
+        "$(cat "$cd/max_state" 2>/dev/null || echo null)" \
+        "$(cat /sys/class/hwmon/hwmon0/pwm1 2>/dev/null || echo null)"
+    first=1
+    discover | while IFS=' ' read -r ztype path cur; do
+        orig=$(awk -v p="$path" '$2==p{print $3}' "$ORIG_FILE" 2>/dev/null)
+        temp=$(cat "$(dirname "$path")/temp" 2>/dev/null)
+        [ "$first" = 1 ] || printf ','
+        first=0
+        printf '{"zone":"%s","trip":"%s","now":%s,"orig":%s,"temp":%s}' \
+            "$ztype" "$(basename "$path")" "${cur:-null}" "${orig:-null}" "${temp:-null}"
+    done
+    printf ']}\n'
+}
+
+# selftest - on-device checks. Read-only: never changes a trip or the mode.
+#
+# PERFORMANCE: discover() walks every thermal zone and spawns a process per
+# read. An earlier version called it twice per trip per mode (~192 full scans)
+# and took >14 minutes, heating the SoC enough to spin the fan up by itself.
+# Discovery now runs ONCE into a snapshot, and each check is a single awk pass
+# over it. Keep it that way -- see tests/test_module.sh.
+selftest() {
+    t=0; f=0
+    _t() { t=$((t+1)); if [ "$1" = 0 ]; then echo "  PASS $2"; else f=$((f+1)); echo "  FAIL $2${3:+ -- $3}"; fi; }
+
+    SNAP=/data/local/tmp/.fanctl_snapshot.$$
+    discover > "$SNAP" 2>/dev/null
+    trap 'rm -f "$SNAP"' EXIT INT TERM
+
+    n=$(wc -l < "$SNAP" 2>/dev/null || echo 0)
+    [ "$n" -gt 0 ] && _t 0 "discovery finds fan-bound trips ($n)" || _t 1 "discovery finds fan-bound trips" "found 0"
+
+    badp=$(awk '{ print $2 }' "$SNAP" | while read -r pth; do
+             case "$pth" in */trip_point_*_temp) [ -w "$pth" ] || echo "$pth";; *) echo "$pth";; esac; done)
+    [ -z "$badp" ] && _t 0 "every discovered node is a writable trip point" \
+                   || _t 1 "every discovered node is a writable trip point" "$badp"
+
+    # INVARIANT against real hardware: no mode may raise a CPU/GPU trip.
+    # One awk pass per mode, joined against the snapshot.
+    for m in quiet balanced default performance; do
+        raised=$(plan_for_mode "$m" < "$SNAP" | awk -v snap="$SNAP" '
+            BEGIN { while ((getline l < snap) > 0) { split(l, a, " "); z[a[2]]=a[1]; o[a[2]]=a[3] } }
+            z[$1] != "usb-therm" && ($2+0) > (o[$1]+0) { printf "%s(%s->%s) ", $1, o[$1], $2 }')
+        [ -z "$raised" ] && _t 0 "mode $m raises no CPU/GPU trip" || _t 1 "mode $m raises no CPU/GPU trip" "$raised"
+    done
+
+    # usb-therm must stay inside the clamp in every mode
+    for m in quiet balanced performance; do
+        outside=$(plan_for_mode "$m" < "$SNAP" | awk -v snap="$SNAP" -v lo="$USB_FLOOR" -v hi="$USB_CEILING" '
+            BEGIN { while ((getline l < snap) > 0) { split(l, a, " "); z[a[2]]=a[1] } }
+            z[$1] == "usb-therm" && (($2+0) > hi+0 || ($2+0) < lo+0) { printf "%s=%s ", $1, $2 }')
+        [ -z "$outside" ] && _t 0 "mode $m keeps usb-therm within [$USB_FLOOR,$USB_CEILING]" \
+                          || _t 1 "mode $m keeps usb-therm within clamp" "$outside"
+    done
+
+    # originals, if recorded, must cover every discovered trip
+    if [ -s "$ORIG_FILE" ]; then
+        miss=$(awk -v orig="$ORIG_FILE" '
+            BEGIN { while ((getline l < orig) > 0) { split(l, a, " "); have[a[2]]=1 } }
+            !have[$2] { printf "%s ", $2 }' "$SNAP")
+        [ -z "$miss" ] && _t 0 "originals cover every discovered trip" || _t 1 "originals cover every discovered trip" "$miss"
+    fi
+
+    # every zone we touch must still be governed by step_wise
+    nonstep=$(awk '{ print $2 }' "$SNAP" | sed 's|/trip_point_.*||' | sort -u | while read -r zd; do
+                g=$(cat "$zd/policy" 2>/dev/null); [ "$g" = step_wise ] || echo "$zd=$g"; done)
+    [ -z "$nonstep" ] && _t 0 "all touched zones still use step_wise" || _t 1 "all touched zones still use step_wise" "$nonstep"
+
+    rm -f "$SNAP"; trap - EXIT
+    echo
+    echo "  $((t-f))/$t passed"
+    [ "$f" -eq 0 ]
+}
+
+case "${1:-}" in
+    status)      status ;;
+    quiet|balanced|default|performance)
+                 d=0; [ "${2:-}" = "--dry-run" ] && d=1
+                 apply "$1" "$d" ;;
+    discover)    discover ;;
+    capture)     capture "${2:-}" ;;
+    get)         get ;;
+    json)        json ;;
+    selftest)    selftest ;;
+    *) cat >&2 <<EOF
+usage: fanctl {status|quiet|balanced|performance|default} [--dry-run]
+       fanctl {get|json|selftest|discover|capture [--force]}
+
+  status       show every fan-bound trip, its original, and current fan state
+  quiet        usb-therm -> ${USB_QUIET_TEMP}m C, CPU/GPU ladder untouched
+  balanced     quiet, plus CPU/GPU fan trips shifted by ${BALANCED_OFFSET}m C
+  performance  quiet, plus CPU/GPU fan trips shifted by ${PERF_OFFSET}m C
+  default      restore every recorded original (CLI only -- for "stock",
+               disable the Magisk module instead)
+  get          print the persisted mode (cheap; for the QS tile)
+  json         machine-readable status (for the app layer)
+  selftest     on-device checks, read-only
+  capture      record stock trip values (--force overwrites; boot only)
+
+State: $STATE_DIR
+EOF
+       exit 2 ;;
+esac

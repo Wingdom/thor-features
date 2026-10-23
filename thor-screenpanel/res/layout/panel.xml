@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Mode row, laid out the way stock's own Mode panel was: three
+     options in a rounded card, the active one marked with a filled accent
+     circle. Stock's other rows (brightness, volume, FPS, the Task and
+     Settings tabs) are deliberately not here yet - Mode is the half that
+     carries the screen on/off control. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_margin="12dp"
+        android:background="@drawable/panel_card"
+        android:orientation="vertical"
+        android:paddingTop="14dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="24dp"
+            android:layout_marginBottom="10dp"
+            android:text="@string/mode_title"
+            android:textColor="@color/panel_on_surface_dim"
+            android:textSize="12sp"
+            android:letterSpacing="0.08"
+            android:textAllCaps="true" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <include layout="@layout/mode_item" android:id="@+id/mode_dual" />
+            <include layout="@layout/mode_item" android:id="@+id/mode_top" />
+            <include layout="@layout/mode_item" android:id="@+id/mode_bottom" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

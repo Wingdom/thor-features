@@ -1,0 +1,4 @@
+[    6656.762836] /dev/input/event0: EV_KEY       KEY_F24              DOWN                
+[    6657.064001] /dev/input/event0: EV_KEY       KEY_F24              UP                  
+[    6658.907713] /dev/input/event0: EV_KEY       KEY_F24              DOWN                
+[    6659.186586] /dev/input/event0: EV_KEY       KEY_F24              UP                  

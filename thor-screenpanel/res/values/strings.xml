@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thor Screen Panel</string>
+    <string name="mode_title">Mode</string>
+    <!-- Stock's own wording, so the panel reads the way it used to. -->
+    <string name="mode_dual">Dual-screen display</string>
+    <string name="mode_top">Only top screen</string>
+    <string name="mode_bottom">Only bottom screen</string>
+    <string name="no_root">Root required — grant the Magisk prompt</string>
+    <string name="failed">Could not change mode</string>
+</resources>

@@ -1,0 +1,4 @@
+[    5000.000000] EV_KEY       KEY_F24              DOWN                
+[      12.000000] EV_KEY       KEY_F24              UP                  
+[      20.000000] EV_KEY       KEY_F24              DOWN                
+[      20.100000] EV_KEY       KEY_F24              UP                  

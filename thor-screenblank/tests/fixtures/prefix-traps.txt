@@ -1,0 +1,3 @@
+/sys/class/input/input1 fts_ts_secondary
+/sys/class/input/input2 fts_ts_tertiary
+/sys/class/input/input3 xfts_ts

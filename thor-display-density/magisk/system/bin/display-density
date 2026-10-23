@@ -1,0 +1,112 @@
+#!/system/bin/sh
+# display-density -- pick the AYN Thor's MAIN-screen density from a fixed list.
+#
+# Main screen only: every wm call is pinned to -d 0. The secondary screen
+# (1240x1080) is left alone deliberately.
+#
+# There is no arbitrary-value option, by request. The list is short so that
+# every entry is one someone has a reason to choose.
+
+STATE=${THOR_DD_STATE:-/data/adb/thor-display-density}
+DISPLAY_ID=0
+
+die() { echo "display-density: $*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# resolve <preset> -> "reset" | <dpi>
+#
+# Pure mapping, no device access, so it is unit-testable on the host.
+# Anything not in the list is refused rather than passed through to wm.
+# ---------------------------------------------------------------------------
+resolve() {
+    case "$1" in
+        native|reset)  echo reset ;;
+        320|physical)  echo 320 ;;
+        369|stock)     echo 369 ;;
+        288|tablet)    echo 288 ;;
+        *)             return 1 ;;
+    esac
+}
+
+describe() {
+    case "$1" in
+        reset) echo "panel default, no forced density (sw540dp)" ;;
+        320)   echo "panel's true density, forced (sw540dp)" ;;
+        369)   echo "what the stock AYN ROM used, ~15% larger UI (sw468dp)" ;;
+        288)   echo "sw600dp - Android switches many apps to tablet layouts" ;;
+    esac
+}
+
+usage() {
+    cat <<USAGE
+usage: display-density [status|native|320|369|288|revert]
+
+  native   panel default, clears the forced density   (sw540dp)
+  320      panel's true density, forced               (sw540dp)
+  369      stock AYN                                  (sw468dp, ~15% larger)
+  288      tablet layouts                             (sw600dp)
+
+  status   show current state
+  revert   clear the forced density and forget the saved preset
+
+Main screen only. The secondary display is never touched.
+USAGE
+}
+
+apply() {                       # apply <reset|dpi>  -- no persistence
+    if [ "$1" = reset ]; then
+        wm density reset -d "$DISPLAY_ID" >/dev/null 2>&1 \
+            || die "wm density reset -d $DISPLAY_ID failed"
+    else
+        wm density "$1" -d "$DISPLAY_ID" >/dev/null 2>&1 \
+            || die "wm density $1 -d $DISPLAY_ID failed"
+    fi
+}
+
+# Read back what the framework actually has, rather than trusting the exit
+# code: wm returns 0 for values the framework then declines to use.
+effective() {
+    wm density -d "$DISPLAY_ID" 2>/dev/null \
+        | awk -F': *' '/Override density/{o=$2} /Physical density/{p=$2} END{print (o?o:p)}'
+}
+
+cmd_set() {
+    _want=$(resolve "$1") || { echo "display-density: unknown preset '$1'" >&2; usage >&2; exit 2; }
+    apply "$_want"
+    sleep 1
+    _got=$(effective)
+    _expect=$_want
+    [ "$_want" = reset ] && _expect=$(wm density -d "$DISPLAY_ID" 2>/dev/null \
+        | awk -F': *' '/Physical density/{print $2; exit}')
+    if [ "$_got" != "$_expect" ]; then
+        die "asked for $1 (-> $_want) but display $DISPLAY_ID reads $_got"
+    fi
+    mkdir -p "$STATE"
+    if [ "$_want" = reset ]; then rm -f "$STATE/preset"; else echo "$_want" > "$STATE/preset"; fi
+    echo "display $DISPLAY_ID density: $_got   ($(describe "$_want"))"
+}
+
+cmd_status() {
+    echo "saved preset: $( [ -f "$STATE/preset" ] && cat "$STATE/preset" || echo 'none (native)' )"
+    echo "display 0:    $(wm density -d 0 2>/dev/null | tr '\n' ' ')"
+    echo "display 1:    $(wm density -d 1 2>/dev/null | tr '\n' ' ')  (never touched)"
+    echo "config:       $(dumpsys window displays 2>/dev/null | awk '/mDisplayId=0/,0' \
+        | grep -m1 -oE 'sw[0-9]+dp w[0-9]+dp h[0-9]+dp [0-9]+dpi')"
+}
+
+# A forced density is a framework setting and outlives the module, so
+# `touch disable` cannot undo it. This is the explicit way back.
+cmd_revert() {
+    apply reset
+    rm -f "$STATE/preset"
+    echo "display $DISPLAY_ID density: back to the panel default"
+}
+
+case "${1:-status}" in
+    status)  cmd_status ;;
+    revert)  cmd_revert ;;
+    resolve) shift; resolve "${1:-}" || { echo "unknown" >&2; exit 2; } ;;
+    -h|--help|help) usage ;;
+    '')      cmd_status ;;
+    *)       cmd_set "$1" ;;
+esac

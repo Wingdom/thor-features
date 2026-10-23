@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thor screen move</string>
+    <string name="tile_name">Screen move</string>
+    <string name="moving">Moving…</string>
+    <string name="need_root">This tile needs the thor-screenmove Magisk module and root access.\n\nIf Magisk prompted for permission, grant it and tap again. If the module is not installed, flash thor-screenmove and reboot.</string>
+    <string name="nothing_to_move">Neither screen is showing an app to move — only launchers.\n\nOpen an app, then tap this tile to send it to the other screen.</string>
+</resources>

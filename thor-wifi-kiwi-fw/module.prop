@@ -1,0 +1,6 @@
+id=thor-wifi-kiwi-fw
+name=Thor WiFi - kiwi amss20 firmware overlay
+version=v1.0
+versionCode=1
+author=local
+description=Overlays /vendor/firmware/kiwi/amss20.bin from TheMuppets proprietary_vendor_ayn_qcs8550-common. /vendor/firmware has load priority over /vendor/firmware_mnt (modem), and LineageOS ships no kiwi dir there, so the driver falls back to the modem copy (sha 429fc931, 6385728 bytes) which breaks 6GHz SAE. This supplies the known-working blob (sha a4ea7e02, 6299712 bytes). Suggested by LineageOS maintainer on issue for odin2thor.

@@ -1,0 +1,377 @@
+#!/system/bin/sh
+# aynkeyd - bind the AYN Thor's physical AYN button (the one below the 3.92"
+# bottom screen) to a short-press and a long-press action.
+#
+# Why this exists:
+#   On stock, the button sent one broadcast - action.tcc.button.key.event with
+#   a key_action_down extra - and stock's dual-screen app toggled the
+#   bottom-screen panel on it. Nothing in any of the stock APKs
+#   *sends* that broadcast: the sender lived in AYN's modified framework, at
+#   PhoneWindowManager level. On LineageOS the key therefore has no publisher
+#   and no subscriber, so recreating the panel means recreating the key
+#   handler too.
+#
+# Why a root daemon on the input device, and not a keylayout or an app:
+#   The button is KEY_F24 (scancode 194) on the gpio-keys device - measured
+#   with getevent and cross-checked against AYN's own device tree, where it is
+#   cus_key / "custom_key" on <&tlmm 41>. Generic.kl maps it to KEYCODE_F24,
+#   there is no .idc and no global-key config on the ROM, so nothing in
+#   LineageOS binds it.
+#
+#   An ordinary app only receives key events while it holds focus, which is
+#   exactly wrong for a button whose job is to open something. Global key
+#   binding is a framework resource (config_globalKeyIntents) and not
+#   reachable from a module. Reading the evdev node as root sidesteps both:
+#   getevent opens the device non-exclusively, so the framework still delivers
+#   KEYCODE_F24 to whatever is focused and no existing input behaviour changes.
+#
+# Why the press duration is ours to invent:
+#   Stock's receiver handled key-DOWN only and had no timer at all, so the
+#   short/long distinction lived in AYN's framework and is not recoverable
+#   from the APKs.
+#
+# Why the long press fires while the key is still held:
+#   The first build classified on key-UP, which made the whole thing a pure
+#   function of two timestamps and needed no timer. Tested on the device
+#   2026-10-22 and rejected by the user: "it turns off when I lift off the
+#   button, no matter how long I hold... can you have it turn off/on after 2
+#   or 3 seconds exactly, even if I keep holding the button?"
+#
+#   So the long action now fires at the threshold, mid-hold, and releasing
+#   afterwards does nothing. That needs a timer process per press, and a timer
+#   racing a key-UP needs an arbiter: both paths try to claim the press with
+#   mkdir, which is atomic, and exactly one of them wins. Without that, a
+#   release landing within milliseconds of the threshold could fire both the
+#   short and the long action - which on this binding means toggling the
+#   bottom screen off and then immediately opening a panel on it.
+#
+#   The threshold is 2000 ms, the shorter of the two the user named. It is one
+#   constant, below - LONG_PRESS_MS - and nothing else needs to change to make
+#   it 3000.
+#
+# Usage:  aynkeyd start [--foreground]
+#         aynkeyd stop
+#         aynkeyd status
+#         aynkeyd device              # print the resolved input node
+#
+# Safety:
+#   Reads one evdev node, writes no hardware node and no system property. The
+#   only thing it can execute is /data/adb/thor-aynkey/action.sh, and if that
+#   file is absent it logs to logcat and does nothing else - so an install with
+#   no action configured is inert. Kill the daemon, or disable the module and
+#   reboot, and the button goes back to being an unbound key.
+
+set -u
+
+LONG_PRESS_MS=2000           # The long action fires once the key has been held
+                             # this long, without waiting for release. Set at
+                             # the user's request after testing; see above.
+KEYNAME=KEY_F24              # the AYN button. KEY_VOLUMEUP shares this device
+                             # and must never trigger an action.
+DEVNAME=gpio-keys            # resolved by name, never by node number: event
+                             # numbering is assigned at boot and *did* change
+                             # between sessions (event0 -> event3 on
+                             # 2026-10-22, after an Xbox pad enumerated).
+
+STATE_DIR=/data/adb/thor-aynkey
+PIDFILE=$STATE_DIR/aynkeyd.pid
+ACTION=$STATE_DIR/action.sh
+TAG=aynkeyd
+
+logit() { log -t "$TAG" "$*" 2>/dev/null; }
+
+# --- input device discovery ---------------------------------------------------
+# Walk getevent's device dump and return the node whose name is $DEVNAME *and*
+# which actually carries $KEYNAME. The name check alone is not enough: a device
+# can be renamed or duplicated, and a node that lacks the key would make the
+# daemon sit silently on the wrong file forever.
+find_device() {
+    getevent -pl 2>/dev/null | awk -v want="$DEVNAME" -v key="$KEYNAME" '
+        /^add device/      { node = $NF; name = ""; haskey = 0; next }
+        /^[ \t]+name:/     { name = $2; gsub(/"/, "", name); next }
+        index($0, key) > 0 { haskey = 1 }
+        # A blank-ish boundary is unreliable in this output, so decide as soon
+        # as both facts are known for the current device.
+        name == want && haskey { print node; exit }
+    '
+}
+
+# --- the event stream --------------------------------------------------------
+# Reads `getevent -lt` lines on stdin and prints one normalised line per edge:
+#   down <milliseconds>
+#   up   <milliseconds>
+# Pure text in, pure text out, no device and no side effects.
+#
+# Deliberate behaviours, each with a test:
+#   - only $KEYNAME is considered; KEY_VOLUMEUP on the same node is ignored
+#   - whole-field matching, so KEY_F24 never matches a longer name
+#   - "add device" / driver-version noise and SYN_REPORT lines are ignored
+#   - an optional "/dev/input/eventN:" prefix is tolerated, so captures taken
+#     across all devices parse the same as single-device ones
+emit_events() {
+    awk -v key="$KEYNAME" '
+        function stamp(line,    s) {
+            if (match(line, /\[[ \t]*[0-9]+\.[0-9]+\]/) == 0) return -1
+            s = substr(line, RSTART+1, RLENGTH-2)
+            gsub(/[ \t]/, "", s)
+            return s + 0
+        }
+        function hasfield(f,    i) {
+            for (i = 1; i <= NF; i++) if ($i == f) return 1
+            return 0
+        }
+        !hasfield("EV_KEY") { next }
+        !hasfield(key)      { next }
+        {
+            t = stamp($0)
+            if (t < 0) next
+            if (hasfield("DOWN")) { printf "down %d\n", t * 1000; fflush(); next }
+            if (hasfield("UP"))   { printf "up %d\n",   t * 1000; fflush() }
+        }
+    '
+}
+
+# --- the press semantics, as a simulation ------------------------------------
+# The live implementation below uses a timer process and an mkdir arbiter,
+# which cannot be unit-tested on the host. This function implements the same
+# rules over recorded input and prints what *would* fire and when:
+#
+#   long@<ms-after-down>    the hold reached the threshold; fires mid-hold
+#   short@<ms-after-down>   released before the threshold; fires on release
+#
+# Keeping the rules in one testable place is the point: tests/test_parse.sh
+# asserts against this, and the live loop is then only responsible for the
+# plumbing that makes a timer and a key-UP agree on who won.
+simulate() {
+    awk -v thresh="$LONG_PRESS_MS" '
+        $1 == "down" {
+            # A second DOWN with no UP between means an UP was lost. This key
+            # has no autorepeat (measured), so that is anomalous input, and
+            # the conservative response to anomalous input is to fire nothing:
+            # cancel the pending press rather than guess at its length.
+            pending = 1; downms = $2; next
+        }
+        $1 == "up" {
+            if (!pending) next              # UP with no DOWN
+            pending = 0
+            d = $2 - downms
+            if (d < 0) next                 # clock changed under us
+            if (d >= thresh) printf "long@%d\n", thresh
+            else             printf "short@%d\n", d
+            next
+        }
+        END {
+            # Still held when the stream ended. The live timer fires on its
+            # own, so the simulation has to say so too.
+            if (pending) printf "long@%d\n", thresh
+        }
+    '
+}
+
+# --- dispatch -----------------------------------------------------------------
+# One indirection on purpose. aynkeyd owns *detecting* the press; it does not
+# own what a press means. The action script lives in /data/adb (root-only, and
+# outside the Magisk overlay), so thor-screenpanel can install it without two
+# modules fighting over the same /system path, and removing it leaves a working
+# but inert daemon rather than a broken one.
+dispatch() {
+    kind=$1
+    if [ -x "$ACTION" ]; then
+        logit "$kind press -> $ACTION"
+        "$ACTION" "$kind" </dev/null >/dev/null 2>&1 &
+    else
+        logit "$kind press (no action installed at $ACTION)"
+    fi
+}
+
+# --- the press state machine, live -------------------------------------------
+# On DOWN: start a timer that will fire the long action at the threshold.
+# On UP:   if the timer has not fired yet, fire the short action instead.
+#
+# The arbiter. The timer and the UP handler race whenever a release lands near
+# the threshold, and both firing would mean toggling the bottom screen *and*
+# opening a panel on it. `mkdir` is atomic and fails if the directory exists,
+# so each path attempts to create the same claim and only the winner acts.
+#
+# Nothing is ever killed. An earlier build cancelled the losing timer with
+# `kill "$timer_pid"`, and that killed the daemon itself: traced on the device
+# 2026-10-22, the shell took a SIGTERM immediately after the kill and the whole
+# pipeline went down, so the button worked exactly once per boot. The kill was
+# never load-bearing - a timer that loses the race can simply wake up, fail to
+# claim, and exit. The only cost is a `sleep` lingering for up to the threshold.
+#
+# That also removes the need to delete a claim after use: deleting it would let
+# a late timer re-create it and fire the long action after a short press. Claims
+# are numbered per press, so they are never reused; old ones are pruned behind
+# the live window instead.
+RUN_DIR=$STATE_DIR/run
+PRUNE_LAG=5          # keep this many recent claims; the race window is one
+                     # threshold long, so anything older cannot still be live.
+press_seq=0
+claim=
+
+start_press() {
+    press_seq=$((press_seq + 1))
+    claim=$RUN_DIR/claim.$press_seq
+    mkdir -p "$RUN_DIR" 2>/dev/null
+
+    # toybox sleep takes a decimal, so the threshold stays in milliseconds
+    # everywhere and is converted only here.
+    secs=$(awk -v ms="$LONG_PRESS_MS" 'BEGIN { printf "%.3f", ms / 1000 }')
+    (
+        sleep "$secs"
+        if mkdir "$claim" 2>/dev/null; then
+            dispatch long
+        fi
+    ) </dev/null >/dev/null 2>&1 &
+
+    # Prune behind the live window so the run directory stays bounded.
+    [ "$press_seq" -gt "$PRUNE_LAG" ] \
+        && rm -rf "$RUN_DIR/claim.$((press_seq - PRUNE_LAG))" 2>/dev/null
+    return 0
+}
+
+end_press() {
+    [ -n "$claim" ] || return 0
+    if mkdir "$claim" 2>/dev/null; then
+        # We claimed it first, so the threshold was never reached: a short press.
+        dispatch short
+    fi
+    # Otherwise the timer got there first and has already fired the long
+    # action. Releasing after a long press must do nothing at all.
+    claim=
+    return 0
+}
+
+# A DOWN while a press is already pending means a lost UP. Claim the old press
+# without dispatching, so its timer finds the claim taken and stays silent.
+# Cancelling by claiming rather than by killing is the same trick as above.
+cancel_press() {
+    [ -n "$claim" ] && mkdir "$claim" 2>/dev/null
+    claim=
+    return 0
+}
+
+# --- the loop -----------------------------------------------------------------
+# getevent exits if the device disappears (re-enumeration happens: pads
+# connecting and disconnecting renumber the nodes). Re-resolve and reconnect
+# rather than dying, but back off so a permanently missing device does not
+# become a spin loop.
+run() {
+    logit "started (threshold ${LONG_PRESS_MS}ms, key $KEYNAME)"
+    mkdir -p "$RUN_DIR" 2>/dev/null
+    rm -rf "$RUN_DIR"/claim.* 2>/dev/null
+    while :; do
+        dev=$(find_device)
+        if [ -z "$dev" ]; then
+            logit "no $DEVNAME device carrying $KEYNAME; retrying in 10s"
+            sleep 10
+            continue
+        fi
+        logit "reading $dev"
+        # The `while read` is the tail of a pipeline, so it runs in a
+        # subshell - which is fine here, and worth stating because it looks
+        # like a bug: claim/timer_pid live in that subshell and it survives
+        # for the whole lifetime of the stream, which is exactly the scope
+        # they need. Nothing outside the loop reads them.
+        getevent -lt "$dev" 2>/dev/null | emit_events | while read -r kind ts; do
+            case "$kind" in
+                down) [ -n "$claim" ] && cancel_press
+                      start_press ;;
+                up)   end_press ;;
+            esac
+        done
+        logit "input stream for $dev ended; reconnecting in 2s"
+        sleep 2
+    done
+}
+
+# --- process control ----------------------------------------------------------
+running_pid() {
+    [ -f "$PIDFILE" ] || return 1
+    p=$(cat "$PIDFILE" 2>/dev/null)
+    case "$p" in ''|*[!0-9]*) return 1 ;; esac
+    # Confirm the pid is actually us and not a recycled number.
+    grep -q aynkeyd "/proc/$p/cmdline" 2>/dev/null || return 1
+    echo "$p"
+}
+
+cmd_start() {
+    if pid=$(running_pid); then
+        echo "aynkeyd: already running (pid $pid)"
+        return 0
+    fi
+    mkdir -p "$STATE_DIR" 2>/dev/null
+    if [ "${1:-}" = "--foreground" ]; then
+        echo $$ > "$PIDFILE"
+        run
+        return 0
+    fi
+    setsid "$0" start --foreground </dev/null >/dev/null 2>&1 &
+    sleep 1
+    if pid=$(running_pid); then
+        echo "aynkeyd: started (pid $pid)"
+    else
+        echo "aynkeyd: failed to start" >&2
+        return 1
+    fi
+}
+
+cmd_stop() {
+    if pid=$(running_pid); then
+        # Kill the process group: the daemon is a pipeline, so killing only the
+        # shell would leave getevent holding the device.
+        kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+        sleep 1
+        rm -f "$PIDFILE"
+        echo "aynkeyd: stopped (was pid $pid)"
+    else
+        rm -f "$PIDFILE"
+        echo "aynkeyd: not running"
+    fi
+}
+
+cmd_status() {
+    if pid=$(running_pid); then
+        echo "daemon        : running (pid $pid)"
+    else
+        echo "daemon        : not running"
+    fi
+    dev=$(find_device)
+    echo "input device  : ${dev:-<not found>}"
+    echo "key           : $KEYNAME"
+    echo "long press    : >= ${LONG_PRESS_MS} ms"
+    if [ -x "$ACTION" ]; then
+        echo "action        : $ACTION"
+    elif [ -e "$ACTION" ]; then
+        echo "action        : $ACTION (NOT executable - will not run)"
+    else
+        echo "action        : <none installed>  (presses are logged only)"
+    fi
+}
+
+case "${1:-}" in
+    start)   shift; cmd_start "${1:-}" ;;
+    stop)    cmd_stop ;;
+    status)  cmd_status ;;
+    device)  find_device ;;
+    # Hidden, for tests/test_parse.sh: replay recorded getevent output through
+    # the real event parser and the real press rules, with no device, no timer
+    # and no dispatch.
+    _simulate_stdin) emit_events | simulate ;;
+    *)
+        cat <<USAGE
+aynkeyd - bind the AYN button (KEY_F24) to short and long press actions
+
+  aynkeyd start [--foreground]   run the daemon
+  aynkeyd stop                   stop it
+  aynkeyd status                 daemon, resolved device, configured action
+  aynkeyd device                 print the resolved input node
+
+A short press (released early) and a long press (fires after\n${LONG_PRESS_MS} ms, without waiting for release) each run:
+  $ACTION <short|long>
+With no such file the daemon only logs, so it is inert until an action is
+installed. Watch it with:  logcat -s $TAG
+USAGE
+        [ "${1:-}" = "" ] && exit 0 || exit 2 ;;
+esac

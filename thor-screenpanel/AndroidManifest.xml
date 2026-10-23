@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- thor-screenpanel - the AYN button's panel, recreated.
+
+     Opened by a short press of the AYN button, delivered by aynkeyd
+     (thor-aynkey) rather than by the framework: nothing in LineageOS binds
+     KEY_F24, and an app only receives key events while it holds focus.
+
+     The app itself holds no permissions. Everything that touches the device
+     goes through `su` to the screenblank and screenmove commands installed by
+     their Magisk modules, which is the same arrangement thor-screenmove-tile
+     already uses. An earlier build held a SYSTEM_ALERT_WINDOW overlay to fake
+     a blank screen; that approach was tested on hardware 2026-10-22 and
+     rejected - it could not darken the panel, only paint it black, and could
+     not cover the system bars. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.thorfeatures.screenpanel">
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_screenpanel"
+        android:allowBackup="false"
+        android:theme="@style/PanelTheme">
+
+        <!-- Exported so the root daemon can start it with
+             `am start` with a display argument. It takes no input and holds no data;
+             launching it only shows the mode chooser. -->
+        <!-- persistableMode="persistNever" is load-bearing, not tidiness.
+             The default (persistRootOnly) persists the task across a reboot,
+             and on 2026-10-22 it did: after a restart the panel's task was
+             restored as the resumed activity on display 1. Because this
+             window is translucent over a transparent background, a restored
+             panel with nothing behind it renders the bottom screen black -
+             which looked exactly like the screen having failed to come on.
+             finishOnTaskLaunch and the onStop() below close the same hole
+             from the other side. -->
+        <activity
+            android:name=".PanelActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:finishOnTaskLaunch="true"
+            android:persistableMode="persistNever"
+            android:theme="@style/PanelTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

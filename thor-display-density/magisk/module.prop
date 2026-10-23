@@ -1,0 +1,6 @@
+id=thor-display-density
+name=Thor Display Density
+version=v0.1.0
+versionCode=1
+author=local
+description=Sets the AYN Thor's MAIN screen density from a fixed four-entry list: native (panel default, sw540dp), 320 (panel's true density, forced), 369 (what the stock AYN ROM used, ~15% larger UI, sw468dp) and 288 (sw600dp, the threshold where Android switches many apps to tablet layouts). The secondary 1240x1080 display is never touched. There is no arbitrary-value option by design. Nothing is applied until you pick one; the choice is re-applied at every boot so it survives a ROM update. NOTE: a forced density is a framework setting that outlives the module, so disabling alone does not revert it -- run "display-density revert".

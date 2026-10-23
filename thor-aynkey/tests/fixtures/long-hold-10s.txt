@@ -1,0 +1,4 @@
+[    3000.000000] EV_KEY       KEY_F24              DOWN                
+[    3000.000000] EV_SYN       SYN_REPORT           00000000            
+[    3010.000000] EV_KEY       KEY_F24              UP                  
+[    3010.000000] EV_SYN       SYN_REPORT           00000000            
