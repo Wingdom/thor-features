@@ -1,6 +1,6 @@
 id=thor-stickfx
 name=Thor joystick LED effects (stickfx)
-version=v0.1.3
-versionCode=4
+version=v0.1.4
+versionCode=5
 author=local
-description=Adds charging indication and breathe effects to the AYN Thor's 8 joystick RGB LEDs on LineageOS. An ADD-ON to the ROM's own AynParts RGB panel, not a replacement: it writes only trigger/delay_on/delay_off and leaves multi_intensity (colour) to AynParts unless --color is used explicitly. Charging indication is handled by a kernel LED trigger, so there is no polling daemon: by default battery-charging-or-full (solid whenever plugged in), because on a slow charge source with the screen awake this device never reaches STATUS_FULL and the blink variant would blink forever. Selectable and persisted with --trigger. Installing changes nothing until a mode is selected; disable or uninstall restores the LEDs recorded at boot.
+description=Adds charging indication and breathe effects to the AYN Thor's 8 joystick RGB LEDs on LineageOS. An ADD-ON to the ROM's own AynParts RGB panel, not a replacement: it writes only trigger/delay_on/delay_off and leaves multi_intensity (colour) to AynParts unless --color is used explicitly. Charging indication is handled by a kernel LED trigger, so there is no polling daemon: by default usb-online (lit whenever the charger is connected), because every battery-status trigger goes dark while LineageOS charging control holds the battery at its limit - the kernel reports 'Not charging' there. Selectable and persisted with --trigger. Installing changes nothing until a mode is selected; disable or uninstall restores the LEDs recorded at boot.

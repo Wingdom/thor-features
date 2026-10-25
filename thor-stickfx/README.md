@@ -1,7 +1,7 @@
 # thor-stickfx
 
 Charging indication and breathe effects for the AYN Thor's 8 joystick RGB LEDs
-on LineageOS. **v0.1.3 — installed, charge path verified on hardware.**
+on LineageOS. **v0.1.4 — installed, charge path verified on hardware.**
 
 ## Version compatibility
 
@@ -249,18 +249,31 @@ brightness to 255 by itself. The LEDs came up solid teal with no further input.
 The persisted trigger was honoured without `service.sh` passing it, via the
 environment > persisted > default resolution.
 
-### Still not verified
+v0.1.4, after reboot:
 
-- **`FULL` -> solid transition.** `status` has never been observed reaching
-  `Full` on this device, and per the section above it probably will not on a
-  0.9 A PC port with the screen awake. Confirming it needs a real charger,
-  ideally with the screen off. Not on the critical path, since the shipped
-  default no longer depends on termination.
+| Behaviour | Evidence |
+|---|---|
+| Module active | migrated out of `modules_update`, `stickfx` on PATH, `version=v0.1.4` |
+| Boot re-apply | `boot.log` re-applied `charge` with the persisted `usb-online` trigger and seeded 255 from `usb online=1` |
+| Selftest | 5/5, including that every LED advertises `usb-online` and the `--color` takeover is recorded |
+| Stays lit through the charging-control hold | measured on the previous cycle with `usb-online` bound: hold at 85%, `chg_en=0`, **0 dark samples of 36** (against 42 of 278 with a battery-status trigger) |
 
 ### Verified by direct observation (not in the logs)
 
-- **Unplug -> dark.** The logger was started afterwards, and unplugging drops
-  adb anyway.
+- **Unplug -> dark.**
+- **Fan ramp from `usb-therm`.** With `thor-fanctl` disabled, on a fast charger
+  with nothing else running, the fan audibly ramps — the inherited 43 C trip
+  firing, which is what the 60 C value exists to stop.
+
+### Not separately re-measured
+
+- The 85% hold was measured with a temp copy of the same script at the same
+  trigger, not with the installed module. The boot log and selftest show the
+  installed module binds the same trigger the same way, so this was called done
+  rather than re-run.
+- **`FULL` -> solid.** `status` never reaches `Full` here: charging control
+  stops charging long before termination. Not on the critical path, because the
+  shipped default does not depend on it.
 
 ## "100%" is not `Full` — expect blinking past 100%
 

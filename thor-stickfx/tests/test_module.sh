@@ -34,18 +34,33 @@ echo "safety: install-time gating"
 grep -q 'abort' "$M/customize.sh" && ok "customize.sh can abort" || bad "customize.sh can abort"
 grep -q 'odin2thor' "$M/customize.sh" && ok "customize.sh checks the device" || bad "customize.sh checks the device"
 # must gate on the trigger actually bound by default, not some other one
-grep -q 'battery-charging-or-full' "$M/customize.sh" \
-  && ok "customize.sh checks the default charge trigger exists" \
-  || bad "customize.sh checks the default charge trigger exists"
-if grep -qE "^CHARGE_TRIGGER=.*battery-charging-or-full" "$P/stickfx"; then
-  ok "stickfx defaults to battery-charging-or-full"
+grep -q 'usb-online' "$M/customize.sh" \
+  && ok "customize.sh checks the default trigger (usb-online) exists" \
+  || bad "customize.sh checks the default trigger (usb-online) exists"
+# The default must not be a battery-STATUS trigger: measured 2026-10-23, every
+# one of them goes dark while charging control holds the battery at its limit,
+# because the kernel reports "Not charging" there.
+if grep -qE "^CHARGE_TRIGGER=.*echo usb-online\)\}" "$P/stickfx"; then
+  ok "stickfx defaults to usb-online"
 else
-  bad "stickfx defaults to battery-charging-or-full" "default must not depend on STATUS_FULL being reachable"
+  bad "stickfx defaults to usb-online" "a battery-* default goes dark at the charging-control hold"
+fi
+if grep -qE "^CHARGE_TRIGGER=.*echo battery-" "$P/stickfx"; then
+  bad "default is not a battery-status trigger" "goes dark at the hold point"
+else
+  ok "default is not a battery-status trigger"
 fi
 # and the gate must abort on the default, not merely warn
-if awk '/battery-charging-or-full/,/fi/' "$M/customize.sh" | grep -q abort; then
+if awk '/usb-online/,/fi/' "$M/customize.sh" | grep -q abort; then
   ok "install aborts if the default trigger is missing"
 else bad "install aborts if the default trigger is missing"; fi
+# online-based triggers must seed from usb/online, not battery status
+if code | awk '/^ *usb\)/,/;;/' | grep -q 'seed_state online'; then
+  ok "usb mode seeds from usb/online"
+else bad "usb mode seeds from usb/online" "edge-driven: it would come up dark"; fi
+if code | awk '/^ *charge\)/,/;;/' | grep -q 'seed_state online'; then
+  ok "charge picks the online seed for *-online triggers"
+else bad "charge picks the online seed for *-online triggers"; fi
 grep -qE 'stick' "$M/customize.sh" && ok "customize.sh checks for stick LEDs" || bad "customize.sh checks for stick LEDs"
 
 # Magisk sources customize.sh BEFORE extraction, so set_perm on system/bin/*

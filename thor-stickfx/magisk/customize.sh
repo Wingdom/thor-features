@@ -26,12 +26,12 @@ ui_print "  stick LEDs found: $N"
 
 # and they must advertise the charge trigger we rely on
 FIRST=$(for d in /sys/class/leds/*:stick:*; do [ -e "$d/trigger" ] && echo "$d" && break; done)
-# Gate on the trigger we actually bind by default. The blink variant is still
-# selectable with --trigger, so check for it too but only warn.
-if ! tr -d '[]' < "$FIRST/trigger" | tr '\n' ' ' | grep -q ' battery-charging-or-full '; then
-  abort "! Kernel does not advertise battery-charging-or-full. Aborting."
+# Gate on the trigger we actually bind by default: usb-online. The battery-*
+# variants are still selectable with --trigger, so check but only warn.
+if ! tr -d '[]' < "$FIRST/trigger" | tr '\n' ' ' | grep -q ' usb-online '; then
+  abort "! Kernel does not advertise usb-online. Aborting."
 fi
-ui_print "  battery-charging-or-full: available"
+ui_print "  usb-online: available"
 if ! tr -d '[]' < "$FIRST/trigger" | tr '\n' ' ' | grep -q ' battery-charging-blink-full-solid '; then
   ui_print "  (note: blink variant unavailable; --trigger blink will not work)"
 fi

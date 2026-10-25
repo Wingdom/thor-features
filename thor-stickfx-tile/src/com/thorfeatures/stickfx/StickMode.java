@@ -7,10 +7,15 @@ package com.thorfeatures.stickfx;
  * restores the LED state recorded at boot -- it hands the LEDs back to
  * AynParts rather than disabling anything -- so it belongs in the picker.
  *
- * USB is the CLI's verification mode (usb-online trigger, observable without a
- * charging battery). It is deliberately NOT offered: it exists for proving the
- * trigger works, not for daily use. It stays in this enum only so the tile can
- * report honestly if someone selected it from the shell.
+ * USB names the usb-online trigger explicitly. As of thor-stickfx v0.1.4 that is
+ * also what CHARGE binds by default, so the two are the same behaviour and USB
+ * stays out of the picker. It remains in this enum so the tile reports honestly
+ * if someone selected it from the shell.
+ *
+ * Why usb-online is the default: measured 2026-10-23, every battery-status
+ * trigger goes dark while LineageOS charging control holds the battery at its
+ * limit, because the kernel reports "Not charging" there. With a battery-*
+ * trigger the tile would show CHARGE active while the LEDs sat dark.
  *
  * Pure logic -- no Android dependencies -- so it is unit-tested on the host.
  */
@@ -18,7 +23,7 @@ public enum StickMode {
     OFF("off", "Off"),
     CHARGE("charge", "Charge"),
     BREATHE("breathe", "Breathe"),
-    USB("usb", "USB test");
+    USB("usb", "USB (alias of Charge)");
 
     private final String wire;
     private final String label;

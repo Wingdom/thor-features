@@ -60,12 +60,17 @@ act() {
 }
 
 # one brightness column per discovered LED, in discovery order
-hdr="uptime_s,batt_pct,batt_status,current_now_uA,trigger"
+# charging_enabled matters as much as status: LineageOS's charging control
+# (Settings -> Battery -> Charging control) holds the battery at a limit by
+# writing /sys/class/qcom-battery/charging_enabled, so a run that does not log
+# it cannot tell "charger unplugged" from "limit reached and holding".
+CHG_EN=/sys/class/qcom-battery/charging_enabled
+hdr="uptime_s,batt_pct,batt_status,current_now_uA,charging_enabled,trigger"
 for d in $LEDS; do hdr="$hdr,${d##*/}"; done
 echo "$hdr" > "$OUT"
 
 while true; do
-    row="$(cut -d. -f1 /proc/uptime),$(cat $B/capacity 2>/dev/null),$(cat $B/status 2>/dev/null),$(cat $B/current_now 2>/dev/null),$(act)"
+    row="$(cut -d. -f1 /proc/uptime),$(cat $B/capacity 2>/dev/null),$(cat $B/status 2>/dev/null),$(cat $B/current_now 2>/dev/null),$(cat $CHG_EN 2>/dev/null),$(act)"
     for d in $LEDS; do
         row="$row,$(cat "$d/brightness" 2>/dev/null)"
     done

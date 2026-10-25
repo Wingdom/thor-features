@@ -55,19 +55,36 @@ LED_ROOT=${STICKFX_LED_ROOT:-/sys/class/leds}
 # Effective trigger, in precedence order: environment > persisted choice >
 # default. The persisted file matters because service.sh re-applies at boot: an
 # env-only override would silently revert to blinking on the next reboot.
-# Default is battery-charging-or-full -- solid whenever plugged in -- not the
-# blink variant. Measured reason: on a 0.9 A SDP (PC) port with the screen awake
-# this device never reaches POWER_SUPPLY_STATUS_FULL at all. Battery current
-# wobbled 250-650 mA and went negative 13 times in 13 minutes, so the pack never
-# reaches the 4.40 V constant-voltage plateau where charging terminates. The
-# blink variant would therefore blink forever, and battery-full would almost
-# never light. See "Will status ever reach Full?" in README.md.
-CHARGE_TRIGGER=${CHARGE_TRIGGER:-$(cat "$TRIGGER_FILE" 2>/dev/null || echo battery-charging-or-full)}
+# Default is usb-online: lit whenever the charger is connected, regardless of
+# what the battery is doing.
+#
+# Measured 2026-10-23 with LineageOS charging control holding the battery at an
+# 85% limit. Every charge-STATUS trigger goes dark at the hold point, because
+# the kernel reports `Not charging` there, which is the LED_OFF branch:
+#
+#   61%  Charging       chg_en=1  LED=255
+#   85%  Not charging   chg_en=0  LED=0     <-- limit reached, LEDs dark
+#   85%  Discharging    chg_en=1  LED=0
+#   84%  Charging       chg_en=1  LED=0     <-- resumed, still dark (edge lag)
+#   84%  Charging       chg_en=1  LED=255
+#
+# 42 of 278 samples were dark while plugged in. battery-charging-or-full and
+# battery-charging-blink-full-solid are both affected; `Full` is never reached
+# because charging control stops charging well before termination.
+#
+# This matters more than it looks because thor-stickfx-tile's "Charge" entry
+# calls `stickfx charge` with no --trigger, so the default IS the user-facing
+# behaviour -- the tile would show Charge active while the LEDs sat dark.
+#
+# The charge-status triggers remain available via --trigger for anyone not
+# using charging control.
+CHARGE_TRIGGER=${CHARGE_TRIGGER:-$(cat "$TRIGGER_FILE" 2>/dev/null || echo usb-online)}
 BREATHE_MS=${BREATHE_MS:-1200}        # full period; split evenly on/off
 # A trigger only *changes* brightness on a power-supply event (see seed_state),
 # so after binding we seed the current state ourselves. This is the level used.
 SEED_BRIGHTNESS=${SEED_BRIGHTNESS:-255}
 BATT_STATUS=${BATT_STATUS:-/sys/class/power_supply/battery/status}
+USB_ONLINE=${USB_ONLINE:-/sys/class/power_supply/usb/online}
 MIN_BREATHE_MS=${MIN_BREATHE_MS:-200}
 MAX_BREATHE_MS=${MAX_BREATHE_MS:-10000}
 
@@ -148,6 +165,16 @@ seed_for_status() {
     case "$1" in
         Charging|Full) echo "$SEED_BRIGHTNESS" ;;
         *)             echo 0 ;;
+    esac
+}
+
+# Seed value for an online-based trigger. Same edge-driven problem as
+# seed_for_status: usb-online only fires on a power-supply change, so binding it
+# while already plugged in leaves the LED dark until the next plug event.
+seed_for_online() {
+    case "$1" in
+        1) echo "$SEED_BRIGHTNESS" ;;
+        *) echo 0 ;;
     esac
 }
 
@@ -280,8 +307,15 @@ set_color() {
 # battery-charging-or-full bound but dark, because no power-supply event had
 # fired since activation.
 seed_state() {
-    _sfx_st=$(cat "$BATT_STATUS" 2>/dev/null)
-    _sfx_b=$(seed_for_status "$_sfx_st")
+    case "${1:-status}" in
+        online)
+            _sfx_st=$(cat "$USB_ONLINE" 2>/dev/null)
+            _sfx_b=$(seed_for_online "$_sfx_st")
+            _sfx_st="usb online=${_sfx_st:-unknown}" ;;
+        *)
+            _sfx_st=$(cat "$BATT_STATUS" 2>/dev/null)
+            _sfx_b=$(seed_for_status "$_sfx_st") ;;
+    esac
     if [ "$_sfx_b" = 0 ]; then
         echo "  no seed needed for battery status '${_sfx_st:-unknown}' (LED off)"
         return 0
@@ -360,7 +394,10 @@ apply() {
             # Bind FIRST, seed SECOND -- see seed_state() for why both
             # orderings are constrained and why the seed must never be zero.
             set_trigger "$CHARGE_TRIGGER" || die "could not set the charge trigger"
-            seed_state
+            case "$CHARGE_TRIGGER" in
+                *-online) seed_state online ;;
+                *)        seed_state ;;
+            esac
             ;;
         breathe)
             if [ -z "$color" ] && ! any_color; then
@@ -384,9 +421,10 @@ apply() {
             echo "  breathe ${on}ms on / ${off}ms off"
             ;;
         usb)
-            # verification mode: usb-online is observable without a charging
-            # battery, which battery-charging is not.
+            # usb-online explicitly. Same trigger the default now uses; kept as
+            # its own verb because the tile's command surface documents it.
             set_trigger usb-online || die "could not set the usb-online trigger"
+            seed_state online
             ;;
         off)
             restore
@@ -512,13 +550,16 @@ usage: stickfx {status|charge|breathe [ms]|usb|off} [--color RRGGBB] [--trigger 
   status    every stick LED's trigger, brightness and colour
   charge    $CHARGE_TRIGGER  (blink while charging, solid when full)
   breathe   timer trigger, default ${BREATHE_MS}ms period
-  usb       usb-online -- verification mode, observable without a charging battery
+  usb       usb-online explicitly (same as the default charge trigger)
   off       restore the originals recorded at boot
   --color   explicitly take over the COLOUR channel (AynParts owns it otherwise)
   --trigger pick the charge trigger and PERSIST it across reboots:
-              battery-charging-or-full           solid whenever plugged in (default)
+              usb-online                         lit whenever plugged in (default)
+              battery-charging-or-full           lit while charging or full
               battery-charging-blink-full-solid  blink charging, solid full
               battery-full                       lit only once truly full
+            NOTE: the three battery-* triggers go DARK whenever charging control
+            is holding the battery at its limit (status reads "Not charging").
 
 Colour normally comes from Settings -> AYN -> RGB lighting (AynParts).
 stickfx writes only trigger/delay_on/delay_off unless --color is given.

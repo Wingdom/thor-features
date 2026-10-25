@@ -136,6 +136,20 @@ st=sentinel; seed_for_status Full >/dev/null 2>&1
 eq "seed_for_status keeps caller \$st" "$st" "sentinel"
 
 echo
+echo "seed_for_online  (usb-online is edge-driven too)"
+eq "online=1 seeds on"   "$(seed_for_online 1)" "$SEED_BRIGHTNESS"
+eq "online=0 seeds off"  "$(seed_for_online 0)" "0"
+eq "empty seeds off"     "$(seed_for_online '')" "0"
+eq "junk seeds off"      "$(seed_for_online x)" "0"
+o=sentinel; seed_for_online 1 >/dev/null 2>&1
+eq "seed_for_online keeps caller \$o" "$o" "sentinel"
+# the statuses seen at a charging-control hold must all seed OFF for the
+# battery-* triggers -- measured 2026-10-23 at an 85% limit
+for st in "Not charging" Discharging; do
+  eq "hold status '$st' seeds off" "$(seed_for_status "$st")" "0"
+done
+
+echo
 echo "REGRESSION: helpers must not clobber the caller's variables"
 # POSIX sh has no guaranteed `local`. The first version of these helpers used
 # bare `for t in ...` / `for v in ...`, so calling one from inside a loop
