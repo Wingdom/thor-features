@@ -1,0 +1,17 @@
+3 activities found:
+  Activity #0:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.android.launcher3/.uioverrides.QuickstepLauncher
+  Activity #1:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    rip.moth.cocoonshell/.MainActivity
+  Activity #2:
+    priority=-1000 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.android.settings/.FallbackHome
+2 activities found:
+  Activity #0:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.android.launcher3/.secondarydisplay.SecondaryDisplayLauncher
+  Activity #1:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    rip.moth.cocoonshell/.ExternalDisplayActivity

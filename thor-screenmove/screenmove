@@ -25,6 +25,21 @@
 #   reachable from a module. `dontMoveToTop` reaches it but turns the bottom
 #   panel off entirely - tested, rejected.
 #
+# What it refuses to move:
+#   Launcher surfaces, on either screen. The `type=home` task check is not
+#   enough on its own: a dual-screen launcher runs its second-screen UI as an
+#   ordinary activity, so that task comes back `type=standard` and looks like
+#   a movable app. CocoonFE is the case this was written for -
+#   rip.moth.cocoonshell/.MainActivity declares CATEGORY_HOME and
+#   .ExternalDisplayActivity declares CATEGORY_SECONDARY_HOME, but only the
+#   first ever becomes a `type=home` task. Measured on hardware 2026-10-27:
+#   with Cocoon idle on both panels, `toggle` would have dragged Cocoon's own
+#   bottom-screen UI onto the top panel and stranded the bottom display.
+#
+#   So with both screens sitting on their launchers there is now nothing to
+#   move, which is the right answer - Cocoon does its own switching between
+#   its two launcher surfaces and does not want help.
+#
 # Usage:  screenmove status
 #         screenmove toggle      [--dry-run]
 #         screenmove to-top      [--dry-run]
@@ -39,6 +54,7 @@
 set -u
 
 TOP_DISPLAY=0   # the main 1920x1080 panel is always the default display
+SKIP_PKGS=""    # launcher packages, " pkg pkg " form; filled in by main
 
 # --- display discovery --------------------------------------------------------
 # The bottom panel is the other INTERNAL display. Resolve it rather than
@@ -56,6 +72,42 @@ bottom_display() {
               }
               internal=0
           }'
+}
+
+# Packages that register a launcher activity for either screen. Resolved at
+# run time rather than hardcoded, because this has to hold for whatever
+# launcher the user installs - and the query is the same one the framework
+# itself uses to decide what may be home.
+#
+# Negative-priority matches are dropped. com.android.settings/.FallbackHome
+# registers as HOME at priority=-1000; treating Settings as a launcher would
+# make Settings itself unmovable, which is a regression, not a fix.
+#
+# Fails open: if the query returns nothing the list is empty and behaviour is
+# exactly what it was before this check existed. Better to keep working on a
+# build where `cmd package` differs than to refuse to move anything.
+launcher_packages() {
+    for cat in HOME SECONDARY_HOME; do
+        cmd package query-activities --brief \
+            -a android.intent.action.MAIN \
+            -c "android.intent.category.$cat" 2>/dev/null
+    done | filter_launchers
+}
+
+# The text half of launcher_packages, split out so it can be exercised on the
+# host against recorded `cmd package` output with no device attached.
+filter_launchers() {
+    awk '
+        /priority=/ {
+            prio = 0
+            if (match($0, /priority=-?[0-9]+/))
+                prio = substr($0, RSTART+9, RLENGTH-9) + 0
+            next
+        }
+        /^[[:space:]]*[A-Za-z][A-Za-z0-9_.]*\// {
+            if (prio < 0) next
+            c = $1; sub(/\/.*/, "", c); print c
+        }' | sort -u | tr '\n' ' '
 }
 
 # --- the parser ---------------------------------------------------------------
@@ -77,16 +129,25 @@ bottom_display() {
 #      parts of the same dump repeat per-display blocks under other headers.
 #      Matching loosely picks up those and returns stale ids.
 parse_movable() {
-    awk -v want="$1" '
+    awk -v want="$1" -v skip="${2-$SKIP_PKGS}" '
       /^Display #[0-9]+ \(activities/ {
           d = $2; sub(/^#/, "", d); cur = d; insec = 1; next
       }
       /^[A-Za-z]/ && !/^Display #/ { insec = 0 }
       insec && /^  \* Task\{/ {
           if (cur != want || found != "") next
-          type = ""; vis = ""
+          type = ""; vis = ""; pkg = ""
           if (match($0, /type=[a-z]+/))          type = substr($0, RSTART+5, RLENGTH-5)
           if (match($0, /visible=(true|false)/)) vis  = substr($0, RSTART+8, RLENGTH-8)
+          # Owning package. Standard tasks carry A=<uid>:<pkg>; recents carries
+          # I=<pkg>/<cls> instead; type=home tasks carry neither and are already
+          # excluded by type.
+          if (match($0, /A=[0-9]+:[^ ]+/)) {
+              pkg = substr($0, RSTART+2, RLENGTH-2); sub(/^[0-9]+:/, "", pkg)
+          } else if (match($0, /I=[^ \/]+\//)) {
+              pkg = substr($0, RSTART+2, RLENGTH-3)
+          }
+          if (pkg != "" && index(skip, " " pkg " ") > 0) next
           if (type == "standard" && vis == "true" && match($0, /#[0-9]+/))
               found = substr($0, RSTART+1, RLENGTH-1)
       }
@@ -211,9 +272,18 @@ CMD=${1:-}
 # argument rather than a flag. Reads dumpsys text on stdin so the parser can be
 # exercised on the host against recorded fixtures, with no device attached.
 if [ "$CMD" = "_parse_stdin" ]; then
-    parse_movable "${1:-0}"
+    parse_movable "${1:-0}" " ${2:-} "
     exit 0
 fi
+if [ "$CMD" = "_launchers_stdin" ]; then
+    filter_launchers
+    exit 0
+fi
+
+# Resolved once per invocation, after the test entry point has returned so
+# host runs never shell out. Not cached anywhere: this module keeps no
+# persistent state by design, and the two queries cost ~50 ms.
+SKIP_PKGS=" $(launcher_packages) "
 
 DRY=""
 for a in "$@"; do

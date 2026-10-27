@@ -29,7 +29,8 @@ state, not a failure. A caller that treats a non-zero exit as fatal will break:
 this exact mistake broke the panel's "Only bottom screen" mode entirely.
 
 `screenmove status` output wording is parsed by both callers, so changing it is
-a breaking change.
+a breaking change. The launcher-surface rule added in v0.2.0 deliberately
+changes only *values*, never keys or sentinels.
 
 ## Why it exists
 
@@ -68,6 +69,53 @@ alternative gate is a display-device flag.
 stopped the bottom screen taking focus — but **it turns the bottom panel off
 entirely**, so it was rejected.
 
+## Launcher surfaces are never moved
+
+A `type=home` check is not enough on a device with two launcher surfaces. A
+dual-screen launcher runs its second-screen UI as an **ordinary activity**, so
+that task comes back `type=standard` and looks exactly like a movable app.
+
+CocoonFE is the case this was built for:
+
+| activity | declares | task type it gets |
+|---|---|---|
+| `rip.moth.cocoonshell/.MainActivity` | `CATEGORY_HOME` | `type=home` |
+| `rip.moth.cocoonshell/.ExternalDisplayActivity` | `CATEGORY_SECONDARY_HOME` | **`type=standard`** |
+
+Measured on hardware 2026-10-27, with Cocoon idle on both panels:
+
+```
+movable on bottom : 38
+would move task #38 from display 1 to display 0
+```
+
+Task 38 was Cocoon's own bottom-screen UI. Moving it drags the launcher onto
+the top panel and strands the bottom display. Cocoon does its own switching
+between its two launcher surfaces, so the right answer with both screens on
+their launchers is **nothing to move**, which is now what happens.
+
+So in addition to the task-type rules, any task whose package registers a
+launcher activity — `CATEGORY_HOME` or `CATEGORY_SECONDARY_HOME` — is skipped,
+whatever task type it holds. The set is resolved at run time with
+`cmd package query-activities`, not hardcoded, so it holds for whatever
+launcher is installed.
+
+Two details that matter:
+
+- **Negative-priority matches are dropped.**
+  `com.android.settings/.FallbackHome` registers as `CATEGORY_HOME` at
+  `priority=-1000`. Treating Settings as a launcher would make Settings itself
+  unmovable — a worse bug than the one being fixed.
+- **It fails open.** If the query returns nothing, the list is empty and
+  behaviour is exactly what it was before the check existed. Better to keep
+  working on a build where `cmd package` differs than to refuse every move.
+
+This changes no output wording. A screen showing only launcher surfaces now
+reports `<none, launcher only>` where it previously reported a task id, and
+both callers already read any non-numeric value as "nothing movable" — so the
+QS tile goes inert and the panel drops the move from its plan, which is what
+each should do.
+
 ## Safety
 
 This module is unusually low-risk for this project, and deliberately so:
@@ -98,21 +146,25 @@ Each move is verified by re-reading `dumpsys` afterwards rather than trusting
   parser ignores nested tasks, which carry `rootTaskId=`.
 - **Launchers are never moved.** `type=home`, `type=recents` and the
   `type=undefined` Bubbles/SplitRoot containers are excluded — moving a home
-  task would strand that display.
+  task would strand that display. So are tasks belonging to any package that
+  registers a launcher activity, which is what catches a dual-screen
+  launcher's second-screen UI; see above.
 - **Invisible tasks are not candidates.** If an app is backgrounded it is not
   what the user is looking at.
 
 ## Tests
 
 ```
-bash tests/test_parse.sh    # 13 - the dumpsys parser, against recorded fixtures
+bash tests/test_parse.sh    # 21 - the dumpsys parser, against recorded fixtures
 bash tests/test_module.sh   # 17 - packaging and the safety invariants
 bash build.sh               # sync, then test, then package
 ```
 
-Fixtures in `tests/fixtures/` are **real `dumpsys activity activities` output**
-captured from the device on 2026-10-22 with the stock launcher, not
-hand-written approximations. One of them exists specifically because dumpsys
+Fixtures in `tests/fixtures/` are **real output** captured from the device, not
+hand-written approximations: `dumpsys activity activities` from 2026-10-22 with
+the stock launcher, `cocoon-both-screens.txt` from 2026-10-27 with CocoonFE on
+both panels, and `launcher-query.txt`, the `cmd package query-activities` reply
+the launcher filter is tested against. One of them exists specifically because dumpsys
 lists the *focused* display first, so `Display #1` can appear before
 `Display #0` — a parser that assumed id order returns the wrong task, and that
 fixture is the regression guard.

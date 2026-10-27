@@ -1,0 +1,785 @@
+ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)
+Display #0 (activities from top to bottom):
+  * Task{de89807 #1 type=home U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    fullscreenRequestAllowMode=NONE
+    * Task{863dbdb #9 type=home A=10178:rip.moth.cocoonshell nonResizable U=0 rootTaskId=1 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+      fullscreenRequestAllowMode=NONE
+      mLastPausedActivity: ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+      isSleeping=false
+      topResumedActivity=ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+      * Hist  #0: ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+        packageName=rip.moth.cocoonshell processName=rip.moth.cocoonshell
+        launchedFromUid=0 launchedFromPackage=null launchedFromFeature=null userId=0
+        app=ProcessRecord{452856e 4092:rip.moth.cocoonshell/u0a178}
+        Intent { act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000100 cmp=rip.moth.cocoonshell/.MainActivity (has extras) }
+        rootOfTask=true task=Task{863dbdb #9 type=home A=10178:rip.moth.cocoonshell nonResizable}
+        taskAffinity=10178:rip.moth.cocoonshell
+        mActivityComponent=rip.moth.cocoonshell/.MainActivity
+        baseDir=/data/app/~~oGfcoHw6xl5XN8uejtQ6nA==/rip.moth.cocoonshell-Wll1wt3sFpTn1Rlogm0ylA==/base.apk
+        dataDir=/data/user/0/rip.moth.cocoonshell
+        stateNotNeeded=false componentSpecified=true mActivityType=home
+        compat={320dpi always-compat} theme=0x7f0f002e
+        mLastReportedConfigurations:
+          mGlobalConfig={1.0 ?mcc0mnc [en_US] ldltr sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.19 fontWeightAdjustment=0}
+          mOverrideConfig={1.0 ?mcc0mnc [en_US] ldltr sw540dp w960dp h540dp 320dpi lrg long compactNeeded hdr widecg land night finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1920, 1080) mAppBounds=Rect(0, 0 - 1920, 1080) mMaxBounds=Rect(0, 0 - 1920, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.3 fontWeightAdjustment=0}
+        mLastReportedActivityWindowInfo=ActivityWindowInfo{isEmbedded=false, taskBounds=Rect(0, 0 - 1920, 1080), taskFragmentBounds=Rect(0, 0 - 1920, 1080)}
+        CurrentConfiguration={1.0 ?mcc0mnc [en_US] ldltr sw540dp w960dp h540dp 320dpi lrg long compactNeeded hdr widecg land night finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1920, 1080) mAppBounds=Rect(0, 0 - 1920, 1080) mMaxBounds=Rect(0, 0 - 1920, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.3 fontWeightAdjustment=0}
+        RequestedOverrideConfiguration={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?round ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=undefined mActivityType=home mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+        taskDescription: label="null" icon=null iconResource=/0 iconFilename=null primaryColor=fff5f5f5
+          backgroundColor=fffafafa statusBarColor=ff757575 navigationBarColor=808080
+         backgroundColorFloating=ffffffff
+        launchFailed=false launchCount=0 lastLaunchTime=-1d4h25m27s668ms
+        mHaveState=false mIcicle=null
+        state=RESUMED finishing=false
+        keysPaused=false inHistory=true idle=true
+        occludesParent=true mNoDisplay=false immersive=false launchMode=2
+        mActivityType=home
+        windows=[Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}]
+        windowType=2
+        mOccludesParent=true
+        overrideOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+        requestedOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+        mVisibleRequested=true mVisible=true mClientVisible=true reportedDrawn=true reportedVisible=true
+        mNumInterestingWindows=1 mNumDrawnWindows=1 allDrawn=true)
+        startingData=null firstWindowDrawn=true
+        nowVisible=true lastVisibleTime=-19m45s131ms
+        resizeMode=RESIZE_MODE_UNRESIZEABLE
+        mLastReportedMultiWindowMode=false mLastReportedPictureInPictureMode=false
+        supportsSizeChanges=SIZE_CHANGES_UNSUPPORTED_METADATA
+        configChanges=0x45fb
+        neverSandboxDisplayApis=false
+        alwaysSandboxDisplayApis=false
+        isTransparentPolicyRunning=false
+        areBoundsLetterboxed=false
+        isLetterboxRunning=false
+        AppCompatCameraSimReqOrientationPolicy:
+        CameraStateMonitor:
+          activeCameraConnections= mCameraAppInfoSet={ mCameraAppInfoSet={} }
+          mAvailableRotateAndCropModesForCamera={}
+
+  * Task{2efca50 #12 type=recents I=com.android.launcher3/com.android.quickstep.RecentsActivity U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+    fullscreenRequestAllowMode=NONE
+    mLastPausedActivity: ActivityRecord{127526931 u0 com.android.launcher3/com.android.quickstep.RecentsActivity t12}
+    isSleeping=false
+    * Hist  #0: ActivityRecord{127526931 u0 com.android.launcher3/com.android.quickstep.RecentsActivity t12}
+      packageName=com.android.launcher3 processName=com.android.launcher3
+      launchedFromUid=10109 launchedFromPackage=com.android.launcher3 launchedFromFeature=null userId=0
+      app=ProcessRecord{197341f 2828:com.android.launcher3/u0a109}
+      Intent { act=android.intent.action.MAIN cat=[android.intent.category.DEFAULT] flg=0x10800000 xflg=0x4 pkg=com.android.launcher3 cmp=com.android.launcher3/com.android.quickstep.RecentsActivity (has extras) }
+      rootOfTask=true task=Task{2efca50 #12 type=recents I=com.android.launcher3/com.android.quickstep.RecentsActivity}
+      taskAffinity=null
+      mActivityComponent=com.android.launcher3/com.android.quickstep.RecentsActivity
+      baseDir=/system_ext/priv-app/Launcher3QuickStep/Launcher3QuickStep.apk
+      dataDir=/data/user/0/com.android.launcher3
+      stateNotNeeded=true componentSpecified=true mActivityType=recents
+      compat={320dpi always-compat} theme=0x7f130184
+      mLastReportedConfigurations:
+        mGlobalConfig={1.0 ?mcc0mnc [en_US] ldltr sw540dp w960dp h540dp 320dpi lrg long compactNeeded hdr widecg land night finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1920, 1080) mAppBounds=Rect(0, 0 - 1920, 1080) mMaxBounds=Rect(0, 0 - 1920, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.9 fontWeightAdjustment=0}
+        mOverrideConfig={1.0 ?mcc0mnc [en_US] ldltr sw540dp w960dp h540dp 320dpi lrg long compactNeeded hdr widecg land night finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1920, 1080) mAppBounds=Rect(0, 0 - 1920, 1080) mMaxBounds=Rect(0, 0 - 1920, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=recents mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.3 fontWeightAdjustment=0}
+      mLastReportedActivityWindowInfo=ActivityWindowInfo{isEmbedded=false, taskBounds=Rect(0, 0 - 1920, 1080), taskFragmentBounds=Rect(0, 0 - 1920, 1080)}
+      CurrentConfiguration={1.0 ?mcc0mnc [en_US] ldltr sw540dp w960dp h540dp 320dpi lrg long compactNeeded hdr widecg land night finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1920, 1080) mAppBounds=Rect(0, 0 - 1920, 1080) mMaxBounds=Rect(0, 0 - 1920, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=recents mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.3 fontWeightAdjustment=0}
+      RequestedOverrideConfiguration={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?round ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=undefined mActivityType=recents mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+      taskDescription: label="null" icon=null iconResource=/0 iconFilename=null primaryColor=ff181c1d
+        backgroundColor=ff131b1c statusBarColor=0 navigationBarColor=0
+       backgroundColorFloating=ff181c1d
+      launchFailed=false launchCount=0 lastLaunchTime=-1h40m26s297ms
+      mHaveState=true mIcicle=Bundle[mParcelledData.dataSize=2872]
+      state=STOPPED finishing=false
+      keysPaused=false inHistory=true idle=true
+      occludesParent=true mNoDisplay=false immersive=false launchMode=2
+      mActivityType=recents
+      windows=[Window{534f6bd u0 com.android.launcher3/com.android.quickstep.RecentsActivity}]
+      windowType=2
+      mOccludesParent=true
+      overrideOrientation=SCREEN_ORIENTATION_BEHIND
+      requestedOrientation=SCREEN_ORIENTATION_BEHIND
+      mVisibleRequested=false mVisible=false mClientVisible=false reportedDrawn=false reportedVisible=false
+      mAppStopped=true
+      mNumInterestingWindows=1 mNumDrawnWindows=1 allDrawn=false)
+      nowVisible=false lastVisibleTime=-1h23m36s139ms
+      resizeMode=RESIZE_MODE_RESIZEABLE
+      mLastReportedMultiWindowMode=false mLastReportedPictureInPictureMode=false
+      supportsSizeChanges=SIZE_CHANGES_UNSUPPORTED_METADATA
+      configChanges=0x4ffb
+      neverSandboxDisplayApis=false
+      alwaysSandboxDisplayApis=false
+      isTransparentPolicyRunning=false
+      areBoundsLetterboxed=false
+      isLetterboxRunning=false
+      AppCompatCameraSimReqOrientationPolicy:
+      CameraStateMonitor:
+        activeCameraConnections= mCameraAppInfoSet={ mCameraAppInfoSet={} }
+        mAvailableRotateAndCropModesForCamera={}
+
+  * Task{21e4e38 #3 name=Bubbles type=undefined U=0 visible=false visibleRequested=false mode=multi-window translucent=true sz=1}
+    fullscreenRequestAllowMode=NONE
+    mCreatedByOrganizer=true
+    mDisablePip=true
+    * Task{99d4898 #0 name=Bubbles-visibility-barrier type=undefined U=0 rootTaskId=3 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+      fullscreenRequestAllowMode=NONE
+      mCreatedByOrganizer=true
+      isSleeping=false
+
+  * Task{a0c8e11 #4 name=SplitRoot type=undefined U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=2}
+    fullscreenRequestAllowMode=ENTER
+    mCreatedByOrganizer=true
+    * Task{93a9577 #6 name=side type=undefined U=0 rootTaskId=4 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+      mBounds=Rect(1920, 0 - 2880, 1080)
+      fullscreenRequestAllowMode=ENTER
+      mCreatedByOrganizer=true
+      mDisallowOverrideBoundsForChildren=true
+      isSleeping=false
+    * Task{cc7db76 #5 name=main type=undefined U=0 rootTaskId=4 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+      fullscreenRequestAllowMode=ENTER
+      mCreatedByOrganizer=true
+      mDisallowOverrideBoundsForChildren=true
+      isSleeping=false
+
+  Resumed activities in task display areas (from top to bottom):
+    Resumed: ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+
+Display #1 (activities from top to bottom):
+
+  * Task{5150adb #38 type=standard A=10178:rip.moth.cocoonshell U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    fullscreenRequestAllowMode=NONE
+    mLastPausedActivity: ActivityRecord{16709610 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t38}
+    isSleeping=false
+    topResumedActivity=ActivityRecord{16709610 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t38}
+    * Hist  #0: ActivityRecord{16709610 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t38}
+      packageName=rip.moth.cocoonshell processName=rip.moth.cocoonshell
+      launchedFromUid=10178 launchedFromPackage=rip.moth.cocoonshell launchedFromFeature=null userId=0
+      app=ProcessRecord{452856e 4092:rip.moth.cocoonshell/u0a178}
+      Intent { flg=0x18800000 xflg=0x4 cmp=rip.moth.cocoonshell/.ExternalDisplayActivity }
+      rootOfTask=true task=Task{5150adb #38 type=standard A=10178:rip.moth.cocoonshell}
+      taskAffinity=10178:rip.moth.cocoonshell
+      mActivityComponent=rip.moth.cocoonshell/.ExternalDisplayActivity
+      baseDir=/data/app/~~oGfcoHw6xl5XN8uejtQ6nA==/rip.moth.cocoonshell-Wll1wt3sFpTn1Rlogm0ylA==/base.apk
+      dataDir=/data/user/0/rip.moth.cocoonshell
+      stateNotNeeded=true componentSpecified=true mActivityType=standard
+      compat={320dpi always-compat} theme=0x7f0f002e
+      mLastReportedConfigurations:
+        mGlobalConfig={1.0 ?mcc0mnc [en_US] ldltr sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.50 fontWeightAdjustment=0}
+        mOverrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land ?uimode ?night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.2 ?fontWeightAdjustment}
+      mLastReportedActivityWindowInfo=ActivityWindowInfo{isEmbedded=false, taskBounds=Rect(0, 0 - 1240, 1080), taskFragmentBounds=Rect(0, 0 - 1240, 1080)}
+      CurrentConfiguration={1.0 ?mcc0mnc [en_US] ldltr sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.2 fontWeightAdjustment=0}
+      RequestedOverrideConfiguration={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?round ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=undefined mActivityType=standard mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+      ResolvedOverrideConfiguration={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?round ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=undefined mActivityType=undefined mAlwaysOnTop=undefined mRotation=undefined} s.2 ?fontWeightAdjustment}
+      taskDescription: label="null" icon=null iconResource=/0 iconFilename=null primaryColor=fff5f5f5
+        backgroundColor=fffafafa statusBarColor=ff757575 navigationBarColor=808080
+       backgroundColorFloating=ffffffff
+      launchFailed=false launchCount=0 lastLaunchTime=-27m52s12ms
+      mHaveState=false mIcicle=null
+      state=RESUMED finishing=false
+      keysPaused=false inHistory=true idle=true
+      occludesParent=true mNoDisplay=false immersive=false launchMode=1
+      mActivityType=standard
+      windows=[Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}]
+      windowType=2
+      mOccludesParent=true
+      overrideOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+      requestedOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+      mVisibleRequested=true mVisible=true mClientVisible=true reportedDrawn=true reportedVisible=true
+      mNumInterestingWindows=1 mNumDrawnWindows=1 allDrawn=true)
+      startingData=null firstWindowDrawn=true
+      nowVisible=true lastVisibleTime=-26m16s760ms
+      resizeMode=RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION
+      mLastReportedMultiWindowMode=false mLastReportedPictureInPictureMode=false
+      supportsSizeChanges=SIZE_CHANGES_UNSUPPORTED_METADATA
+      configChanges=0x45fb
+      neverSandboxDisplayApis=false
+      alwaysSandboxDisplayApis=false
+      isTransparentPolicyRunning=false
+      areBoundsLetterboxed=false
+      isLetterboxRunning=false
+      AppCompatCameraSimReqOrientationPolicy:
+      CameraStateMonitor:
+        activeCameraConnections= mCameraAppInfoSet={ mCameraAppInfoSet={} }
+        mAvailableRotateAndCropModesForCamera={}
+
+  * Task{4537049 #7 type=home U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+    fullscreenRequestAllowMode=NONE
+    * Task{1250339 #23 type=home A=10109:com.android.launcher3 nonResizable U=0 rootTaskId=7 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+      fullscreenRequestAllowMode=NONE
+      mLastPausedActivity: ActivityRecord{205012736 u0 com.android.launcher3/.secondarydisplay.SecondaryDisplayLauncher t23}
+      isSleeping=false
+      * Hist  #0: ActivityRecord{205012736 u0 com.android.launcher3/.secondarydisplay.SecondaryDisplayLauncher t23}
+        packageName=com.android.launcher3 processName=com.android.launcher3
+        launchedFromUid=10109 launchedFromPackage=com.android.launcher3 launchedFromFeature=null userId=0
+        app=ProcessRecord{197341f 2828:com.android.launcher3/u0a109}
+        Intent { act=android.intent.action.MAIN cat=[android.intent.category.SECONDARY_HOME] flg=0x10000000 xflg=0x4 pkg=com.android.launcher3 cmp=com.android.launcher3/.secondarydisplay.SecondaryDisplayLauncher (has extras) }
+        rootOfTask=true task=Task{1250339 #23 type=home A=10109:com.android.launcher3 nonResizable}
+        taskAffinity=10109:com.android.launcher3
+        mActivityComponent=com.android.launcher3/.secondarydisplay.SecondaryDisplayLauncher
+        baseDir=/system_ext/priv-app/Launcher3QuickStep/Launcher3QuickStep.apk
+        dataDir=/data/user/0/com.android.launcher3
+        stateNotNeeded=false componentSpecified=true mActivityType=home
+        compat={320dpi always-compat} theme=0x7f130013
+        mLastReportedConfigurations:
+          mGlobalConfig={1.0 ?mcc0mnc [en_US] ldltr sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.36 fontWeightAdjustment=0}
+          mOverrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land ?uimode ?night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 ?fontWeightAdjustment}
+        mLastReportedActivityWindowInfo=ActivityWindowInfo{isEmbedded=false, taskBounds=Rect(0, 0 - 1240, 1080), taskFragmentBounds=Rect(0, 0 - 1240, 1080)}
+        CurrentConfiguration={1.0 ?mcc0mnc [en_US] ldltr sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.5 fontWeightAdjustment=0}
+        RequestedOverrideConfiguration={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?round ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=undefined mActivityType=home mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+        taskDescription: label="null" icon=null iconResource=/0 iconFilename=null primaryColor=ff181c1d
+          backgroundColor=ff131b1c statusBarColor=0 navigationBarColor=0
+         backgroundColorFloating=ff181c1d
+        launchFailed=false launchCount=0 lastLaunchTime=-1h4m44s745ms
+        mHaveState=true mIcicle=Bundle[mParcelledData.dataSize=2384]
+        state=STOPPED finishing=false
+        keysPaused=false inHistory=true idle=true
+        occludesParent=true mNoDisplay=false immersive=false launchMode=1
+        mActivityType=home
+        windows=[Window{6162e56 u0 com.android.launcher3/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher}]
+        windowType=2
+        mOccludesParent=true
+        overrideOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+        requestedOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+        mVisibleRequested=false mVisible=false mClientVisible=false reportedDrawn=false reportedVisible=false
+        mAppStopped=true
+        mNumInterestingWindows=1 mNumDrawnWindows=1 allDrawn=false)
+        nowVisible=false lastVisibleTime=-36m26s781ms
+        resizeMode=RESIZE_MODE_UNRESIZEABLE
+        mLastReportedMultiWindowMode=false mLastReportedPictureInPictureMode=false
+        supportsSizeChanges=SIZE_CHANGES_UNSUPPORTED_METADATA
+        configChanges=0x407b
+        neverSandboxDisplayApis=false
+        alwaysSandboxDisplayApis=false
+        isTransparentPolicyRunning=false
+        areBoundsLetterboxed=false
+        isLetterboxRunning=false
+        AppCompatCameraSimReqOrientationPolicy:
+        CameraStateMonitor:
+          activeCameraConnections= mCameraAppInfoSet={ mCameraAppInfoSet={} }
+          mAvailableRotateAndCropModesForCamera={}
+
+  Resumed activities in task display areas (from top to bottom):
+    Resumed: ActivityRecord{16709610 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t38}
+
+  ResumedActivity: ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+
+ActivityTaskSupervisor state:
+  topDisplayFocusedRootTask=Task{de89807 #1 type=home}
+  Display: mDisplayId=0 (organized)
+    init=1920x1080 320dpi mMinSizeOfResizeableTaskDp=220 cur=1920x1080 app=1920x1080 rng=1080x1080-1920x1920
+    deferred=false mLayoutNeeded=false
+  mLastOrientationSource=WindowedMagnification:0:31@177229001
+  deepestLastOrientationSource=ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+  overrideConfig={1.0 ?mcc0mnc [en_US] ldltr sw540dp w960dp h540dp 320dpi lrg long compactNeeded hdr widecg land night finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1920, 1080) mAppBounds=Rect(0, 0 - 1920, 1080) mMaxBounds=Rect(0, 0 - 1920, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.8 fontWeightAdjustment=0}
+  mHasSetIgnoreOrientationRequest=false ignoreOrientationRequest=false
+  mSleeping=false mAllSleepTokens=[]
+  mLayoutSeq=1039
+  mImeWindow=Window{98be373 u0 InputMethod}
+  mImeLayeringTarget=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+  mImeInputTarget=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+  mImeControlTarget=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+  ImeContainer
+    mNeedsLayer=false
+    mImeWindowToken=null
+  mImeParent=ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+  mRemoteInsetsControlTarget=RemoteInsetsControlTarget{ec20cf5 displayId=0 requestedVisibleTypes=503 animatingTypes=0}
+  mCurrentFocus=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+  mFocusedApp=ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+  mFixedRotationLaunchingApp=null
+
+  mHoldScreenWindow=null
+  mObscuringWindow=null
+  mLastWakeLockHoldingWindow=null
+  mLastWakeLockObscuringWindow=null
+
+  mIsHardwareRendererOutputDisabled=false
+  mAreClientRenderingLimitationsEnabled=false
+
+  displayId=0
+  mWallpaperTarget=null
+  mLastWallpaperZoomOut=0.7
+  token WallpaperWindowToken{2c2adc8 showWhenLocked=true}:
+    mWallpaperX=NA
+    mWallpaperY=NA
+    mWallpaperXStep=NA
+    mWallpaperYStep=NA
+    mWallpaperDisplayOffsetX=NA
+    mWallpaperDisplayOffsetY=NA
+
+  mSystemGestureExclusion=SkRegion()
+
+  Display areas in top down Z order:
+    * Leaf:36:36
+    * OneHanded:34:35
+      * Leaf:34:35
+    * Leaf:33:33
+    * OneHanded:32:32
+      * Leaf:32:32
+    * WindowedMagnification:0:31 (organized)
+      * OneHanded:26:31
+        * Leaf:26:31
+      * Leaf:24:25
+      * OneHanded:0:23
+        * Leaf:23:23
+        * AppZoomOut:20:22 (organized)
+          * Leaf:20:22
+        * Leaf:17:19
+        * AppZoomOut:16:16 (organized)
+          * Leaf:16:16
+        * Leaf:15:15
+        * AppZoomOut:2:14 (organized)
+          * ImePlaceholder:13:14
+            * ImeContainer
+          * Leaf:3:12
+          * DefaultTaskDisplayArea (organized)
+        * Leaf:1:1
+        * AppZoomOut:0:0 (organized)
+          * Leaf:0:0
+
+  Task display areas in top down Z order:
+    TaskDisplayArea DefaultTaskDisplayArea
+      overrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?round ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+      mPreferredTopFocusableRootTask=Task{de89807 #1 type=home}
+      mLastFocusedRootTask=Task{de89807 #1 type=home}
+      Application tokens in top down Z order:
+      * Task{de89807 #1 type=home U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+        bounds=[0,0][1920,1080]
+        * Task{863dbdb #9 type=home A=10178:rip.moth.cocoonshell nonResizable U=0 rootTaskId=1 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+          bounds=[0,0][1920,1080]
+          * ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}
+      * Task{2efca50 #12 type=recents I=com.android.launcher3/com.android.quickstep.RecentsActivity U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+        bounds=[0,0][1920,1080]
+        * ActivityRecord{127526931 u0 com.android.launcher3/com.android.quickstep.RecentsActivity t12}
+      * Task{21e4e38 #3 name=Bubbles type=undefined U=0 visible=false visibleRequested=false mode=multi-window translucent=true sz=1}
+        bounds=[0,0][1920,1080]
+        * Task{99d4898 #0 name=Bubbles-visibility-barrier type=undefined U=0 rootTaskId=3 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+          bounds=[0,0][1920,1080]
+      * Task{a0c8e11 #4 name=SplitRoot type=undefined U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=2}
+        bounds=[0,0][1920,1080]
+        * Task{93a9577 #6 name=side type=undefined U=0 rootTaskId=4 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+          bounds=[1920,0][2880,1080]
+        * Task{cc7db76 #5 name=main type=undefined U=0 rootTaskId=4 visible=false visibleRequested=false mode=multi-window translucent=true sz=0}
+          bounds=[0,0][1920,1080]
+
+  rootHomeTask=Task=1
+  rootRecentsTask=Task=12
+
+  PinnedTaskController
+    mIsImeShowing=false
+    mImeHeight=0
+    mMinAspectRatio=0.41841003
+    mMaxAspectRatio=2.39
+
+  DisplayFrames w=1920 h=1080 r=0
+
+  DisplayPolicy
+    mCarDockEnablesAccelerometer=true mDeskDockEnablesAccelerometer=true
+    mDockMode=EXTRA_DOCK_STATE_UNDOCKED mLidState=LID_OPEN
+    mAwake=true mScreenOnEarly=true mScreenOnFully=true
+    mKeyguardDrawComplete=true mWindowManagerDrawComplete=true
+    mHdmiPlugged=false
+    mLastBehavior=SHOW_TRANSIENT_BARS_BY_SWIPE
+    mShowingDream=false mDreamingLockscreen=false
+    mStatusBar=Window{34c968c u0 StatusBar}
+    mExpandedPanel=Window{cab29d8 u0 NotificationShade}
+    isKeyguardShowing=false
+    mNavigationBar=Window{d4ed6ee u0 Taskbar}
+    mNavBarOpacityMode=2
+    mNavigationBarCanMove=false
+    mHasBottomNavigationBar=true
+    mLeftGestureHost=Window{d4ed6ee u0 Taskbar}
+    mTopGestureHost=Window{34c968c u0 StatusBar}
+    mRightGestureHost=Window{d4ed6ee u0 Taskbar}
+    mBottomGestureHost=Window{d4ed6ee u0 Taskbar}
+    mFocusedWindow=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+    mTopFullscreenOpaqueWindowState=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+    mSystemUiControllingWindow=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+    mSystemBarColorApps={ActivityRecord{143703442 u0 rip.moth.cocoonshell/.MainActivity t9}}
+    mNavBarColorWindowCandidate=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+    mNavBarBackgroundWindowCandidate=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+    mLastStatusBarAppearanceRegions=
+      AppearanceRegion{ bounds=[0,0][1920,1080]}
+    mLastLetterboxDetails=
+    mStatusBarBackgroundWindows=
+      Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+    mImeInsetsConsumed=false
+    mForceShowNavigationBarEnabled=false mAllowLockscreenWhenOn=false
+    mAllowsSystemBarRemoteInsetsController=false
+    mDecorInsetsInfo:
+      ROTATION_0={overrideNonDecorInsets=[0,0][0,48], overrideConfigInsets=[0,56][0,48], overrideNonDecorFrame=[0,0][1920,1032], overrideConfigFrame=[0,56][1920,1032]}
+      ROTATION_90={overrideNonDecorInsets=[0,0][0,48], overrideConfigInsets=[0,56][0,48], overrideNonDecorFrame=[0,0][1080,1872], overrideConfigFrame=[0,56][1080,1872]}
+      ROTATION_180={overrideNonDecorInsets=[0,0][0,48], overrideConfigInsets=[0,56][0,48], overrideNonDecorFrame=[0,0][1920,1032], overrideConfigFrame=[0,56][1920,1032]}
+      ROTATION_270={overrideNonDecorInsets=[0,0][0,48], overrideConfigInsets=[0,56][0,48], overrideNonDecorFrame=[0,0][1080,1872], overrideConfigFrame=[0,56][1080,1872]}
+    SystemGestures:
+      mDisplayCutoutTouchableRegionSize=0
+      mSwipeStartThreshold=Rect(48, 48 - 48, 48)
+      mSwipeDistanceThreshold=48
+
+  DisplayRotation
+    mCurrentAppOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+    mLastOrientation=-1
+    mRotation=0 mDeferredRotationPauseCount=0
+    mLandscapeRotation=ROTATION_0 mSeascapeRotation=ROTATION_180
+    mPortraitRotation=ROTATION_270 mUpsideDownRotation=ROTATION_90
+    mSupportAutoRotation=true
+    WindowOrientationListener
+      mEnabled=true
+      mCurrentRotation=ROTATION_0
+      mSensorType=null
+      mSensor={Sensor name="Device Orientation  Wakeup", vendor="QTI", version=1, type=27, maxRange=1.0, resolution=1.0, power=0.025, minDelay=0}
+      mRate=2
+      OrientationSensorJudge
+        mDesiredRotation=-1
+        mProposedRotation=-1
+        mTouching=false
+        mTouchEndedTimestampNanos=309594550680560
+        mLastRotationResolution=0
+
+    mCarDockRotation=-1 mDeskDockRotation=-1
+    mUserRotationMode=USER_ROTATION_FREE mUserRotation=ROTATION_0 mCameraRotationMode=0 mAllowAllRotations=false
+    mDemoHdmiRotation=ROTATION_0 mDemoHdmiRotationLock=false mUndockedHdmiRotation=-1
+    mLidOpenRotation=-1
+    mFixedToUserRotation=false
+
+    RotationLockHistory
+      10-27 11:08:45.603: mode=USER_ROTATION_LOCKED, rotation=ROTATION_0, caller=MonkeyRotationEven#injectEvent
+      10-27 11:08:45.609: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=MonkeyRotationEven#injectEvent
+      10-27 11:13:19.684: mode=USER_ROTATION_LOCKED, rotation=ROTATION_0, caller=MonkeyRotationEven#injectEvent
+      10-27 11:13:19.685: mode=USER_ROTATION_FREE, rotation=ROTATION_0, caller=MonkeyRotationEven#injectEvent
+
+  InputConsumers:
+    name=recents_animation_input_consumer pid=2828 user=UserHandle{0}
+
+  WindowInsetsStateController
+    InsetsState
+      mDisplayFrame=Rect(0, 0 - 1920, 1080)
+      mDisplayCutout=DisplayCutout{insets=Rect(0, 0 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=0 displayHeight=0 physicalDisplayWidth=0 physicalDisplayHeight=0 density={0.0} cutoutSpec={} rotation={0} scale={0.0} physicalPixelDisplaySizeRatio={0.0}}} sideOverrides=null}
+      mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=0, center=Point(0, 0)}, RoundedCorner{position=TopRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomLeft, radius=0, center=Point(0, 0)}]}
+      mRoundedCornerFrame=Rect(0, 0 - 0, 0)
+      mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(1740, 0 - 1904, 56) rotation=0}
+      mDisplayShape=DisplayShape{type=2, displayWidth=1920, displayHeight=1080, physicalPixelDisplaySizeRatio=1.0, rotation=0, offsetX=0, offsetY=0, scale=1.0}
+        InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags=INVALID sideHint=NONE
+        InsetsSource id=13d80000 type=statusBars frame=[0,0][1920,56] visible=false flags= sideHint=TOP
+        InsetsSource id=13d80005 type=mandatorySystemGestures frame=[0,0][1920,56] visible=true flags= sideHint=TOP
+        InsetsSource id=13d80006 type=tappableElement frame=[0,0][1920,56] visible=true flags= sideHint=TOP
+        InsetsSource id=16890001 type=navigationBars frame=[0,1032][1920,1080] visible=false flags=SUPPRESS_SCRIM|ANIMATE_RESIZING sideHint=BOTTOM
+        InsetsSource id=16890004 type=systemGestures frame=[0,0][60,1080] visible=true flags= sideHint=LEFT
+        InsetsSource id=16890005 type=mandatorySystemGestures frame=[0,1016][1920,1080] visible=true flags= sideHint=BOTTOM
+        InsetsSource id=16890006 type=tappableElement frame=[0,0][0,0] visible=true flags= sideHint=NONE
+        InsetsSource id=16890024 type=systemGestures frame=[1860,0][1920,1080] visible=true flags= sideHint=RIGHT
+    Control map:
+      Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}:
+        InsetsSourceControl: {3 mType=ime mSurfacePosition=Point(640, 984) mInsetsHint=Insets{left=0, top=0, right=0, bottom=0} mLeash=null}
+        InsetsSourceControl: {13d80000 mType=statusBars mSurfacePosition=Point(0, 0) mInsetsHint=Insets{left=0, top=56, right=0, bottom=0} mLeash=Surface(name=Surface(name=34c968c StatusBar#62)/@0xce38e63 - animation-leash of insets_animation#1376)/@0x54a5c5f}
+        InsetsSourceControl: {16890001 mType=navigationBars mSurfacePosition=Point(0, 1032) mInsetsHint=Insets{left=0, top=0, right=0, bottom=48} mLeash=Surface(name=Surface(name=d4ed6ee Taskbar#71)/@0x57eb492 - animation-leash of insets_animation#1375)/@0x94876ac}
+    InsetsSourceProviders:
+      InsetsSourceProvider
+        mSource=InsetsSource id=16890024 type=systemGestures frame=[1860,0][1920,1080] visible=true flags= sideHint=RIGHT
+        mSourceFrame=Rect(1860, 0 - 1920, 1080)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{d4ed6ee u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=16890006 type=tappableElement frame=[0,0][0,0] visible=true flags= sideHint=NONE
+        mSourceFrame=Rect(0, 0 - 0, 0)
+        mOverrideFrames={2031=Rect(0, 0 - 0, 0)}
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{d4ed6ee u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=16890005 type=mandatorySystemGestures frame=[0,1016][1920,1080] visible=true flags= sideHint=BOTTOM
+        mSourceFrame=Rect(0, 1016 - 1920, 1080)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{d4ed6ee u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=16890004 type=systemGestures frame=[0,0][60,1080] visible=true flags= sideHint=LEFT
+        mSourceFrame=Rect(0, 0 - 60, 1080)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{d4ed6ee u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=16890001 type=navigationBars frame=[0,1032][1920,1080] visible=false flags=SUPPRESS_SCRIM|ANIMATE_RESIZING sideHint=BOTTOM
+        mSourceFrame=Rect(0, 1032 - 1920, 1080)
+        mControl=InsetsSourceControl mId=16890001 mType=navigationBars mLeash=Surface(name=Surface(name=d4ed6ee Taskbar#71)/@0x57eb492 - animation-leash of insets_animation#1375)/@0x94876ac mInitiallyVisible=false mSurfacePosition=Point(0, 1032) mInsetsHint=Insets{left=0, top=0, right=0, bottom=48} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=0, right=0, bottom=48}
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWin=Window{d4ed6ee u0 Taskbar}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=d4ed6ee Taskbar#71)/@0x57eb492 - animation-leash of insets_animation#1375)/@0x94876ac
+        mControlTarget=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+      InsetsSourceProvider
+        mSource=InsetsSource id=13d80006 type=tappableElement frame=[0,0][1920,56] visible=true flags= sideHint=TOP
+        mSourceFrame=Rect(0, 0 - 1920, 56)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{34c968c u0 StatusBar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=13d80005 type=mandatorySystemGestures frame=[0,0][1920,56] visible=true flags= sideHint=TOP
+        mSourceFrame=Rect(0, 0 - 1920, 56)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{34c968c u0 StatusBar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=13d80000 type=statusBars frame=[0,0][1920,56] visible=false flags= sideHint=TOP
+        mSourceFrame=Rect(0, 0 - 1920, 56)
+        mControl=InsetsSourceControl mId=13d80000 mType=statusBars mLeash=Surface(name=Surface(name=34c968c StatusBar#62)/@0xce38e63 - animation-leash of insets_animation#1376)/@0x54a5c5f mInitiallyVisible=false mSurfacePosition=Point(0, 0) mInsetsHint=Insets{left=0, top=56, right=0, bottom=0} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=56, right=0, bottom=0}
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWin=Window{34c968c u0 StatusBar}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=34c968c StatusBar#62)/@0xce38e63 - animation-leash of insets_animation#1376)/@0x54a5c5f
+        mControlTarget=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+      ImeInsetsSourceProvider
+        mSource=InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags=INVALID sideHint=NONE
+        mSourceFrame=Rect(640, 984 - 1280, 1080)
+        mControl=InsetsSourceControl mId=3 mType=ime mLeash=Surface(name=Surface(name=98be373 InputMethod#1271)/@0xd3743cf - animation-leash of insets_animation#1379)/@0xd0b1f75 mInitiallyVisible=false mSurfacePosition=Point(640, 984) mInsetsHint=Insets{left=0, top=0, right=0, bottom=0} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=0, right=0, bottom=0} stale
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWin=Window{98be373 u0 InputMethod}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=98be373 InputMethod#1271)/@0xd3743cf - animation-leash of insets_animation#1379)/@0xd0b1f75
+        mControlTarget=Window{1e3051a u0 rip.moth.cocoonshell/rip.moth.cocoonshell.MainActivity}
+        mImeShowing=false mLastDrawn=false
+  InsetsPolicy
+    status: WINDOW_STATE_HIDDEN
+    nav: WINDOW_STATE_HIDDEN
+
+  DisplayWindowSettingsProvider
+    SettingsEntry{mWindowingMode=0, mUserRotationMode=null, mUserRotation=null, mForcedWidth=0, mForcedHeight=0, mForcedDensity=0, mForcedDensityRatio=0.0, mForcedScalingMode=null, mRemoveContentMode=0, mShouldShowWithInsecureKeyguard=null, mShouldShowSystemDecors=null, mIsHomeSupported=null, mShouldShowIme=null, mFixedToUserRotation=null, mIgnoreOrientationRequest=null, mIgnoreDisplayCutout=null, mDontMoveToTop=null, mForceAppsUniversalResizable=null, mCanStealTopFocus=null}
+
+  Display: mDisplayId=1 (organized)
+    init=1240x1080 320dpi mMinSizeOfResizeableTaskDp=220 cur=1240x1080 app=1240x1080 rng=1080x1080-1240x1240
+    deferred=false mLayoutNeeded=false
+  mLastOrientationSource=WindowedMagnification:0:31@199622727
+  deepestLastOrientationSource=ActivityRecord{16709610 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t38}
+  overrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir sw540dp w620dp h540dp 320dpi nrml compactNeeded widecg land ?uimode ?night -touch -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1240, 1080) mAppBounds=Rect(0, 0 - 1240, 1080) mMaxBounds=Rect(0, 0 - 1240, 1080) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} ?fontWeightAdjustment}
+  mHasSetIgnoreOrientationRequest=false ignoreOrientationRequest=false
+  mSleeping=false mAllSleepTokens=[]
+  mLayoutSeq=287
+  mImeWindow=null
+  mImeLayeringTarget=null
+  mImeInputTarget=null
+  mImeControlTarget=null
+  ImeContainer
+    mNeedsLayer=false
+    mImeWindowToken=null
+  mImeParent=ImePlaceholder:13:14@47739126
+  mRemoteInsetsControlTarget=RemoteInsetsControlTarget{882b33d displayId=1 requestedVisibleTypes=503 animatingTypes=0}
+  mCurrentFocus=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+  mFocusedApp=null
+  mFixedRotationLaunchingApp=null
+
+  mHoldScreenWindow=null
+  mObscuringWindow=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+  mLastWakeLockHoldingWindow=null
+  mLastWakeLockObscuringWindow=Window{b439ebe u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+
+  mIsHardwareRendererOutputDisabled=false
+  mAreClientRenderingLimitationsEnabled=false
+
+  displayId=1
+  mWallpaperTarget=null
+  mLastWallpaperZoomOut=0.0
+  token WallpaperWindowToken{7674267 showWhenLocked=true}:
+    mWallpaperX=NA
+    mWallpaperY=NA
+    mWallpaperXStep=NA
+    mWallpaperYStep=NA
+    mWallpaperDisplayOffsetX=NA
+    mWallpaperDisplayOffsetY=NA
+
+  mSystemGestureExclusion=SkRegion()
+
+  Display areas in top down Z order:
+    * Leaf:32:36
+    * WindowedMagnification:0:31 (organized)
+      * Leaf:15:31
+      * ImePlaceholder:13:14
+        * ImeContainer
+      * Leaf:3:12
+      * DefaultTaskDisplayArea (organized)
+      * Leaf:0:1
+
+  Task display areas in top down Z order:
+    TaskDisplayArea DefaultTaskDisplayArea
+      overrideConfig={0.0 ?mcc0mnc ?localeList ?layoutDir ?swdp ?wdp ?hdp ?density ?lsize ?long ?round ?ldr ?wideColorGamut ?orien ?uimode ?night ?touch ?keyb/?/? ?nav/? winConfig={ mBounds=Rect(0, 0 - 0, 0) mAppBounds=null mMaxBounds=Rect(0, 0 - 0, 0) mDisplayRotation=undefined mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=undefined} ?fontWeightAdjustment}
+      mLastFocusedRootTask=Task{5150adb #38 type=standard A=10178:rip.moth.cocoonshell}
+      Application tokens in top down Z order:
+      * Task{5150adb #38 type=standard A=10178:rip.moth.cocoonshell U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+        bounds=[0,0][1240,1080]
+        * ActivityRecord{16709610 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t38}
+      * Task{4537049 #7 type=home U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+        bounds=[0,0][1240,1080]
+        * Task{1250339 #23 type=home A=10109:com.android.launcher3 nonResizable U=0 rootTaskId=7 visible=false visibleRequested=false mode=fullscreen translucent=true sz=1}
+          bounds=[0,0][1240,1080]
+          * ActivityRecord{205012736 u0 com.android.launcher3/.secondarydisplay.SecondaryDisplayLauncher t23}
+
+  rootHomeTask=Task=7
+
+  PinnedTaskController
+    mIsImeShowing=false
+    mImeHeight=0
+    mMinAspectRatio=0.41841003
+    mMaxAspectRatio=2.39
+
+  DisplayFrames w=1240 h=1080 r=0
+
+  DisplayPolicy
+    mCarDockEnablesAccelerometer=true mDeskDockEnablesAccelerometer=true
+    mDockMode=EXTRA_DOCK_STATE_UNDOCKED mLidState=LID_ABSENT
+    mAwake=true mScreenOnEarly=true mScreenOnFully=true
+    mKeyguardDrawComplete=false mWindowManagerDrawComplete=false
+    mHdmiPlugged=false
+    mLastBehavior=SHOW_TRANSIENT_BARS_BY_SWIPE
+    mShowingDream=false mDreamingLockscreen=false
+    mStatusBar=Window{5e378ae u0 StatusBar(displayId=1)}
+    isKeyguardShowing=false
+    mNavigationBar=Window{2fc2ca0 u0 Taskbar}
+    mNavBarOpacityMode=2
+    mNavigationBarCanMove=false
+    mHasBottomNavigationBar=true
+    mTopGestureHost=Window{5e378ae u0 StatusBar(displayId=1)}
+    mBottomGestureHost=Window{2fc2ca0 u0 Taskbar}
+    mFocusedWindow=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+    mTopFullscreenOpaqueWindowState=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+    mSystemUiControllingWindow=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+    mSystemBarColorApps={ActivityRecord{16709610 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t38}}
+    mNavBarColorWindowCandidate=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+    mNavBarBackgroundWindowCandidate=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+    mLastStatusBarAppearanceRegions=
+      AppearanceRegion{ bounds=[0,0][1240,1080]}
+    mLastLetterboxDetails=
+    mStatusBarBackgroundWindows=
+      Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+    mImeInsetsConsumed=false
+    mForceShowNavigationBarEnabled=false mAllowLockscreenWhenOn=false
+    mAllowsSystemBarRemoteInsetsController=false
+    mDecorInsetsInfo:
+      ROTATION_0={overrideNonDecorInsets=[0,0][0,96], overrideConfigInsets=[0,56][0,96], overrideNonDecorFrame=[0,0][1240,984], overrideConfigFrame=[0,56][1240,984]}
+      ROTATION_90={overrideNonDecorInsets=[0,0][96,0], overrideConfigInsets=[0,56][96,0], overrideNonDecorFrame=[0,0][984,1240], overrideConfigFrame=[0,56][984,1240]}
+      ROTATION_180={overrideNonDecorInsets=[0,0][0,96], overrideConfigInsets=[0,56][0,96], overrideNonDecorFrame=[0,0][1240,984], overrideConfigFrame=[0,56][1240,984]}
+      ROTATION_270={overrideNonDecorInsets=[96,0][0,0], overrideConfigInsets=[96,56][0,0], overrideNonDecorFrame=[96,0][1080,1240], overrideConfigFrame=[96,56][1080,1240]}
+    SystemGestures:
+      mDisplayCutoutTouchableRegionSize=0
+      mSwipeStartThreshold=Rect(48, 48 - 48, 48)
+      mSwipeDistanceThreshold=48
+
+  DisplayRotation
+    mCurrentAppOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+    mLastOrientation=-1
+    mRotation=0 mDeferredRotationPauseCount=0
+    mLandscapeRotation=ROTATION_0 mSeascapeRotation=ROTATION_180
+    mPortraitRotation=ROTATION_270 mUpsideDownRotation=ROTATION_90
+    mSupportAutoRotation=true
+
+    mCarDockRotation=-1 mDeskDockRotation=-1
+    mUserRotationMode=USER_ROTATION_FREE mUserRotation=ROTATION_0 mCameraRotationMode=0 mAllowAllRotations=unknown
+    mDemoHdmiRotation=ROTATION_0 mDemoHdmiRotationLock=false mUndockedHdmiRotation=-1
+    mLidOpenRotation=-1
+    mFixedToUserRotation=false
+
+
+  WindowInsetsStateController
+    InsetsState
+      mDisplayFrame=Rect(0, 0 - 1240, 1080)
+      mDisplayCutout=DisplayCutout{insets=Rect(0, 0 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=0 displayHeight=0 physicalDisplayWidth=0 physicalDisplayHeight=0 density={0.0} cutoutSpec={} rotation={0} scale={0.0} physicalPixelDisplaySizeRatio={0.0}}} sideOverrides=null}
+      mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=0, center=Point(0, 0)}, RoundedCorner{position=TopRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomLeft, radius=0, center=Point(0, 0)}]}
+      mRoundedCornerFrame=Rect(0, 0 - 0, 0)
+      mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(1060, 0 - 1224, 56) rotation=0}
+      mDisplayShape=DisplayShape{type=2, displayWidth=1240, displayHeight=1080, physicalPixelDisplaySizeRatio=1.0, rotation=0, offsetX=0, offsetY=0, scale=1.0}
+        InsetsSource id=9a930000 type=statusBars frame=[0,0][1240,56] visible=false flags= sideHint=TOP
+        InsetsSource id=9a930005 type=mandatorySystemGestures frame=[0,0][1240,56] visible=true flags= sideHint=TOP
+        InsetsSource id=9a930006 type=tappableElement frame=[0,0][1240,56] visible=true flags= sideHint=TOP
+        InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags=INVALID sideHint=NONE
+        InsetsSource id=4b650001 type=navigationBars frame=[0,984][1240,1080] visible=false flags= sideHint=BOTTOM
+        InsetsSource id=4b650004 type=systemGestures frame=[0,0][0,0] visible=true flags= sideHint=NONE
+        InsetsSource id=4b650005 type=mandatorySystemGestures frame=[0,984][1240,1080] visible=true flags= sideHint=BOTTOM
+        InsetsSource id=4b650006 type=tappableElement frame=[0,984][1240,1080] visible=true flags= sideHint=BOTTOM
+        InsetsSource id=4b650024 type=systemGestures frame=[0,0][0,0] visible=true flags= sideHint=NONE
+    Control map:
+      Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}:
+        InsetsSourceControl: {9a930000 mType=statusBars initiallyVisible mSurfacePosition=Point(0, 0) mInsetsHint=Insets{left=0, top=56, right=0, bottom=0} mLeash=Surface(name=Surface(name=5e378ae StatusBar(displayId=1)#96)/@0x270d697 - animation-leash of insets_animation#1264)/@0xf9f707d}
+        InsetsSourceControl: {4b650001 mType=navigationBars initiallyVisible mSurfacePosition=Point(0, 984) mInsetsHint=Insets{left=0, top=0, right=0, bottom=96} mLeash=Surface(name=Surface(name=2fc2ca0 Taskbar#104)/@0xd17ed16 - animation-leash of insets_animation#1263)/@0x8d72b72}
+    InsetsSourceProviders:
+      InsetsSourceProvider
+        mSource=InsetsSource id=4b650024 type=systemGestures frame=[0,0][0,0] visible=true flags= sideHint=NONE
+        mSourceFrame=Rect(0, 0 - 0, 0)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{2fc2ca0 u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=4b650006 type=tappableElement frame=[0,984][1240,1080] visible=true flags= sideHint=BOTTOM
+        mSourceFrame=Rect(0, 984 - 1240, 1080)
+        mOverrideFrames={2031=Rect(0, 984 - 1240, 1080)}
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{2fc2ca0 u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=4b650005 type=mandatorySystemGestures frame=[0,984][1240,1080] visible=true flags= sideHint=BOTTOM
+        mSourceFrame=Rect(0, 984 - 1240, 1080)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{2fc2ca0 u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=4b650004 type=systemGestures frame=[0,0][0,0] visible=true flags= sideHint=NONE
+        mSourceFrame=Rect(0, 0 - 0, 0)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{2fc2ca0 u0 Taskbar}
+      InsetsSourceProvider
+        mSource=InsetsSource id=4b650001 type=navigationBars frame=[0,984][1240,1080] visible=false flags= sideHint=BOTTOM
+        mSourceFrame=Rect(0, 984 - 1240, 1080)
+        mControl=InsetsSourceControl mId=4b650001 mType=navigationBars mLeash=Surface(name=Surface(name=2fc2ca0 Taskbar#104)/@0xd17ed16 - animation-leash of insets_animation#1263)/@0x8d72b72 mInitiallyVisible=true mSurfacePosition=Point(0, 984) mInsetsHint=Insets{left=0, top=0, right=0, bottom=96} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=0, right=0, bottom=96}
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWin=Window{2fc2ca0 u0 Taskbar}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=2fc2ca0 Taskbar#104)/@0xd17ed16 - animation-leash of insets_animation#1263)/@0x8d72b72
+        mControlTarget=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+      ImeInsetsSourceProvider
+        mSource=InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags=INVALID sideHint=NONE
+        mSourceFrame=Rect(0, 0 - 0, 0)
+        mInsetsHint=Insets{left=0, top=0, right=0, bottom=0} stale
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mPendingControlTarget=com.android.server.wm.InsetsStateController$1@17fa0a8
+        mImeShowing=false mLastDrawn=false
+      InsetsSourceProvider
+        mSource=InsetsSource id=9a930006 type=tappableElement frame=[0,0][1240,56] visible=true flags= sideHint=TOP
+        mSourceFrame=Rect(0, 0 - 1240, 56)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{5e378ae u0 StatusBar(displayId=1)}
+      InsetsSourceProvider
+        mSource=InsetsSource id=9a930005 type=mandatorySystemGestures frame=[0,0][1240,56] visible=true flags= sideHint=TOP
+        mSourceFrame=Rect(0, 0 - 1240, 56)
+        mIsLeashInitialized=false mHasPendingPosition=false
+        mWin=Window{5e378ae u0 StatusBar(displayId=1)}
+      InsetsSourceProvider
+        mSource=InsetsSource id=9a930000 type=statusBars frame=[0,0][1240,56] visible=false flags= sideHint=TOP
+        mSourceFrame=Rect(0, 0 - 1240, 56)
+        mControl=InsetsSourceControl mId=9a930000 mType=statusBars mLeash=Surface(name=Surface(name=5e378ae StatusBar(displayId=1)#96)/@0x270d697 - animation-leash of insets_animation#1264)/@0xf9f707d mInitiallyVisible=true mSurfacePosition=Point(0, 0) mInsetsHint=Insets{left=0, top=56, right=0, bottom=0} mSkipAnimationOnce=false mImeStatsToken=null
+        mInsetsHint=Insets{left=0, top=56, right=0, bottom=0}
+        mIsLeashInitialized=true mHasPendingPosition=false
+        mWin=Window{5e378ae u0 StatusBar(displayId=1)}
+        mAdapter=ControlAdapter mCapturedLeash=Surface(name=Surface(name=5e378ae StatusBar(displayId=1)#96)/@0x270d697 - animation-leash of insets_animation#1264)/@0xf9f707d
+        mControlTarget=Window{a735f22 u0 rip.moth.cocoonshell/rip.moth.cocoonshell.ExternalDisplayActivity}
+  InsetsPolicy
+    status: WINDOW_STATE_HIDDEN
+    nav: WINDOW_STATE_HIDDEN
+
+  DisplayWindowSettingsProvider
+    SettingsEntry{mWindowingMode=0, mUserRotationMode=null, mUserRotation=null, mForcedWidth=0, mForcedHeight=0, mForcedDensity=0, mForcedDensityRatio=0.0, mForcedScalingMode=null, mRemoveContentMode=0, mShouldShowWithInsecureKeyguard=null, mShouldShowSystemDecors=true, mIsHomeSupported=true, mShouldShowIme=0, mFixedToUserRotation=null, mIgnoreOrientationRequest=null, mIgnoreDisplayCutout=null, mDontMoveToTop=null, mForceAppsUniversalResizable=null, mCanStealTopFocus=null}
+
+  KeyguardController:
+    mKeyguardShowing=false
+    mAodShowing=false
+    mKeyguardGoingAway=false
+   KeyguardShowing=false AodShowing=false KeyguardGoingAway=false DismissalRequested=false  Occluded=false DismissingKeyguardActivity=null TurnScreenOnActivity=null at display=0
+   KeyguardShowing=false AodShowing=false KeyguardGoingAway=false DismissalRequested=false  Occluded=false DismissingKeyguardActivity=null TurnScreenOnActivity=null at display=1
+    mDismissalRequested=false
+
+  LockTaskController:
+    mLockTaskModeState=NONE
+    mLockTaskModeTasks=
+    mLockTaskPackages (userId:packages)=
+
+  mCurTaskIdForUser={0=42}
+  mUserRootTaskInFront={}
+  mVisibilityTransactionDepth=0
+  isHomeRecentsComponent=false
+  mNoHistoryActivities=[]
+
+  TaskOrganizerController:
+      android.window.ITaskOrganizer$Stub$Proxy@9b79f50 uid=10104 (active):
+        (fullscreen) Task{de89807 #1 type=home}
+        (multi-window) Task{21e4e38 #3 name=Bubbles type=undefined}
+        (fullscreen) Task{a0c8e11 #4 name=SplitRoot type=undefined}
+        (multi-window) Task{cc7db76 #5 name=main type=undefined}
+        (multi-window) Task{93a9577 #6 name=side type=undefined}
+        (multi-window) Task{99d4898 #0 name=Bubbles-visibility-barrier type=undefined}
+        (fullscreen) Task{4537049 #7 type=home}
+        (fullscreen) Task{2efca50 #12 type=recents I=com.android.launcher3/com.android.quickstep.RecentsActivity}
+        (fullscreen) Task{5150adb #38 type=standard A=10178:rip.moth.cocoonshell}
+
+  VisibleActivityProcess:[ ProcessRecord{452856e 4092:rip.moth.cocoonshell/u0a178}]
+  NumNonAppVisibleWindowUidMap:[ 10109:2 10104:2]
