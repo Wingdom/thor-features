@@ -22,6 +22,9 @@ screenmove toggle
 change to it is a breaking change; the host tests use real captured output
 precisely so that such a change fails loudly.
 
+Tested against `thor-screenmove` v0.2.0, which changed only *values* in that
+block, never keys or sentinels — so no tile change was needed for it.
+
 ## What the tile shows
 
 | situation | state | subtitle |
@@ -34,6 +37,19 @@ precisely so that such a change fails loudly.
 
 The subtitle names the **action the tap will take**, not the current state,
 because the tile has exactly one verb.
+
+**"Nothing to move" is the normal resting state on a dual-screen launcher.**
+CocoonFE draws a launcher surface on *both* panels, so at idle neither screen
+has anything movable and the tile sits inactive. That is correct, not a fault:
+Cocoon does its own switching between its two surfaces. The tile stays
+clickable and explains itself if tapped.
+
+This changed with `thor-screenmove` v0.2.0. Before it, a launcher's
+second-screen UI was offered as movable whenever it happened to get a
+`type=standard` task, and the tile would read "Send to top" while idle —
+tapping it dragged the bottom launcher onto the top panel. No tile code
+changed; the CLI now reports `<none, launcher only>` for that screen and the
+tile has always read any non-numeric value as nothing movable.
 
 ## Why it is never `STATE_UNAVAILABLE` at rest
 
