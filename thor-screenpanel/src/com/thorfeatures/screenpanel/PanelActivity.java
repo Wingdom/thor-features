@@ -12,6 +12,7 @@ import android.view.WindowManager;
 import android.widget.ImageView;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -64,6 +65,9 @@ public final class PanelActivity extends Activity {
         int shownOn = getDisplay() != null ? getDisplay().getDisplayId() : 0;
         if (shownOn != ScreenMode.TOP) bottomDisplay = shownOn;
 
+        bindBrightness();
+        bindQuick();
+
         dualItem   = bind(R.id.mode_dual,   R.drawable.ic_mode_dual,   R.string.mode_dual,   Mode.DUAL);
         topItem    = bind(R.id.mode_top,    R.drawable.ic_mode_top,    R.string.mode_top,    Mode.TOP_ONLY);
         bottomItem = bind(R.id.mode_bottom, R.drawable.ic_mode_bottom, R.string.mode_bottom, Mode.BOTTOM_ONLY);
@@ -92,7 +96,7 @@ public final class PanelActivity extends Activity {
     }
 
     /**
-     * Keep the card clear of the navigation bar.
+     * Keep the panel clear of the navigation bar.
      *
      * The panel is bottom-anchored and the navigation bar is drawn above
      * ordinary windows, so without this the back/home/recents buttons land
@@ -105,7 +109,7 @@ public final class PanelActivity extends Activity {
      * inset than three-button navigation.
      */
     private void insetCardAboveSystemBars() {
-        final View card = findViewById(R.id.card);
+        final View card = findViewById(R.id.panel_root);
         final ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) card.getLayoutParams();
         final int baseBottom = lp.bottomMargin;
         final int baseLeft   = lp.leftMargin;
@@ -132,6 +136,171 @@ public final class PanelActivity extends Activity {
         return item;
     }
 
+    // --- per-screen brightness ----------------------------------------------
+    // Each panel gets its own slider. This only does anything once
+    // thor-screenbright has removed the bottom panel's leadDisplayAddress:
+    // until then the framework drives panel1's backlight from display 0 and
+    // a per-display value is stored but never applied. Measured 2026-10-28.
+
+    private void bindBrightness() {
+        bindBrightnessRow(R.id.bright_top,    R.string.bright_top,    Brightness.TOP);
+        bindBrightnessRow(R.id.bright_bottom, R.string.bright_bottom, bottomDisplay);
+    }
+
+    private void bindBrightnessRow(int rowId, int labelRes, int displayId) {
+        final View row = findViewById(rowId);
+        ((TextView) row.findViewById(R.id.bright_label)).setText(labelRes);
+        SeekBar bar = row.findViewById(R.id.bright_bar);
+
+        bar.setMax(Brightness.STEPS);
+        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                // Keep the icon readable as the fill sweeps under it.
+                tintBrightnessIcon(row, progress);
+                // Otherwise nothing to do while dragging. The track fill is the
+                // feedback, exactly as in the notification shade, and the
+                // command is sent on release: a set per pixel would queue
+                // dozens of `su` processes, and process spawns on this device
+                // are expensive enough to have cost a session before.
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) { }
+            @Override public void onStopTrackingTouch(SeekBar sb) {
+                final float target = Brightness.fromSlider(sb.getProgress());
+                io.execute(() -> {
+                    root.run(Brightness.setCommand(displayId, target));
+                    // Read back rather than assume: the framework clamps to its
+                    // own configured range and may not land on what was asked.
+                    float actual = Brightness.parse(
+                            root.run(Brightness.getCommand(displayId)).out);
+                    if (actual >= 0f) {
+                        ui.post(() -> renderBrightness(rowId, actual));
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderBrightness(int rowId, float v) {
+        View row = findViewById(rowId);
+        SeekBar bar = row.findViewById(R.id.bright_bar);
+        if (v < 0f) {
+            // Unknown is not zero. Dim the whole row and disable the slider
+            // rather than parking the thumb at the bottom, which would look
+            // like a real setting and invite dragging a dead control.
+            bar.setEnabled(false);
+            row.setAlpha(0.4f);
+            return;
+        }
+        bar.setEnabled(true);
+        row.setAlpha(1f);
+        int pos = Brightness.toSlider(v);
+        bar.setProgress(pos);
+        tintBrightnessIcon(row, pos);
+    }
+
+    /** Dark icon on the accent fill, light icon on the dark track. */
+    private void tintBrightnessIcon(View row, int sliderPos) {
+        ImageView icon = row.findViewById(R.id.bright_icon);
+        icon.setImageTintList(getColorStateList(Brightness.iconOnFill(sliderPos)
+                ? R.color.bright_icon_on_fill
+                : R.color.bright_icon_on_track));
+    }
+
+    private void refreshBrightness() {
+        io.execute(() -> {
+            float top = Brightness.parse(root.run(Brightness.getCommand(Brightness.TOP)).out);
+            float bot = Brightness.parse(root.run(Brightness.getCommand(bottomDisplay)).out);
+            ui.post(() -> {
+                renderBrightness(R.id.bright_top, top);
+                renderBrightness(R.id.bright_bottom, bot);
+            });
+        });
+    }
+
+    // --- quick settings ------------------------------------------------------
+    // The fan and the joystick LEDs already have Quick Settings tiles. The
+    // panel offers the same controls, reusing those tiles' mode enums rather
+    // than copying their state lists - see QuickSettings.
+
+    private final QuickSetting fanSetting   = QuickSettings.fan();
+    private final QuickSetting stickSetting = QuickSettings.stick();
+
+    private void bindQuick() {
+        bindCycle(R.id.quick_fan,   R.drawable.ic_quick_fan,   R.string.quick_fan,   fanSetting);
+        bindCycle(R.id.quick_stick, R.drawable.ic_quick_stick, R.string.quick_stick, stickSetting);
+
+        // Move-app is an action, not a cycle: there is no state to display and
+        // nothing to step through, so it gets a hint line instead.
+        //
+        // This is a straight pass-through of `screenmove toggle`, exactly what
+        // thor-screenmove-tile does. The panel deliberately does NOT pre-check
+        // whether anything is movable or interpret why a move failed: that is
+        // the module's business, the module is being tuned independently, and
+        // a copy of its rules here would be a second opinion that goes stale.
+        LinearLayout move = findViewById(R.id.quick_move);
+        ((ImageView) move.findViewById(R.id.icon)).setImageResource(R.drawable.ic_quick_move);
+        ((TextView)  move.findViewById(R.id.label)).setText(R.string.quick_move);
+        ((TextView)  move.findViewById(R.id.state)).setText(R.string.quick_move_hint);
+        move.setOnClickListener(v -> io.execute(() -> {
+            boolean ok = root.run(PanelCommands.SCREENMOVE + " toggle").code == 0;
+            ui.post(() -> {
+                if (ok) {
+                    // A successful move fronts the task, so the panel is no
+                    // longer what the user is looking at. Get out of the way.
+                    finish();
+                } else {
+                    // Left open on purpose: closing the panel after nothing
+                    // visibly happened reads as the tap being ignored.
+                    ((TextView) move.findViewById(R.id.state)).setText(R.string.quick_move_none);
+                }
+            });
+        }));
+    }
+
+    private void bindCycle(int itemId, int iconRes, int labelRes, QuickSetting q) {
+        LinearLayout item = findViewById(itemId);
+        ((ImageView) item.findViewById(R.id.icon)).setImageResource(iconRes);
+        ((TextView)  item.findViewById(R.id.label)).setText(labelRes);
+        item.setOnClickListener(v -> io.execute(() -> {
+            // Read the state immediately before acting rather than trusting
+            // what is on screen: the QS tile for this same control can change
+            // it while the panel is open.
+            String current = root.quickState(q);
+            String target = q.next(current);
+            root.quickSet(q, target);
+            String after = root.quickState(q);
+            ui.post(() -> renderQuick(itemId, q, after));
+        }));
+    }
+
+    private void renderQuick(int itemId, QuickSetting q, String wire) {
+        LinearLayout item = findViewById(itemId);
+        TextView state = item.findViewById(R.id.state);
+        View icon = item.findViewById(R.id.icon);
+        if (wire == null) {
+            // The CLI did not answer - its module is not installed. Say so
+            // rather than showing a control that silently does nothing.
+            state.setText(R.string.quick_unavailable);
+            icon.setSelected(false);
+            item.setEnabled(false);
+            item.setClickable(false);
+            return;
+        }
+        state.setText(q.labelFor(wire));
+        icon.setSelected(q.isActive(wire));
+    }
+
+    private void refreshQuick() {
+        io.execute(() -> {
+            String fanState = root.quickState(fanSetting);
+            String stickState = root.quickState(stickSetting);
+            ui.post(() -> {
+                renderQuick(R.id.quick_fan, fanSetting, fanState);
+                renderQuick(R.id.quick_stick, stickSetting, stickState);
+            });
+        });
+    }
+
     /** Read the device's current state and mark the matching option. */
     private void refresh() {
         io.execute(() -> {
@@ -146,6 +315,8 @@ public final class PanelActivity extends Activity {
             Mode m = ScreenMode.current(dark[0], dark[1]);
             ui.post(() -> { currentMode = m; markSelected(m); });
         });
+        refreshQuick();
+        refreshBrightness();
     }
 
     private void markSelected(Mode m) {

@@ -7,6 +7,39 @@ not bind it at all — nothing happens when you press it.
 This feature brings both halves back: the button does something, and what it
 opens is stock's **Mode** panel.
 
+## Per-screen brightness
+
+The bottom panel is a brightness *follower* of the main one in
+`/vendor/etc/displayconfig/display_layout_configuration.xml`, which is why both
+screens always shared a level. `cmd display set-brightness --id 1` looks like
+it works on a stock ROM — the value is accepted and read back — but never
+reaches the hardware: with display 1 set to `0.1` its backlight node stayed at
+`4095`.
+
+`thor-screenbright` removes the one `<leadDisplayAddress>` element. After a
+reboot the same command drives each panel independently and linearly
+(`0.01 → 41`, `1.0 → 4095` against `max_brightness` 4095).
+
+Three scales are in play on this device and are easy to confuse: the framework
+float `[0,1]`, the backlight node `0..4095`, and the `screen_brightness`
+setting `0..255`. `Brightness.java` converts between them in one place.
+
+## Scope: the panel is UI, the modules are not its business
+
+The panel invokes each CLI the same way that CLI's own Quick Settings tile
+does, and stops there. No pre-checks, no retries, no interpreting *why* a
+command failed.
+
+`fanctl`, `stickfx` and `screenmove` pre-date the panel and have their own
+tiles — treat those as pure pass-through. `thor-aynkey` and `thor-screenblank`
+were written *for* the panel, so their behaviour is in scope here.
+
+Decided 2026-10-27, after the panel grew a `screenmove status` pre-check so
+"Move app" could say "Nothing to move". `screenmove` was being tuned
+independently at the time, and a copy of its rules inside the panel is a second
+opinion that goes stale.
+
+
 ## What the button does
 
 | press | effect |

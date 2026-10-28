@@ -363,6 +363,170 @@ public final class TestMain {
         }
         check("a move is dropped only when its source screen is empty", "[]", lostRescue.toString());
 
+        // --- quick settings ---------------------------------------------------
+        // The fan and joystick LEDs already have QS tiles; the panel offers the
+        // same controls. The state lists come from the tiles' own enums rather
+        // than being copied, so these tests also pin that the reuse is real.
+        QuickSetting fan = QuickSettings.fan();
+        QuickSetting stick = QuickSettings.stick();
+
+        check("fan cycles the three tiers, in order",
+              "[quiet, balanced, performance]", Arrays.toString(fan.wires));
+        check("stick cycles off/charge/breathe",
+              "[off, charge, breathe]", Arrays.toString(stick.wires));
+
+        // USB is an alias of charge and is excluded from StickMode.choices();
+        // offering both would be two buttons doing the same thing.
+        check("stick does not offer the usb alias", -1, stick.indexOf("usb"));
+
+        // Commands match each CLI's contract: `<binary> get` reads, bare wire sets.
+        check("fan status command", "/system/bin/fanctl get", fan.statusCommand());
+        check("fan set command", "/system/bin/fanctl balanced", fan.setCommand("balanced"));
+        check("stick status command", "/system/bin/stickfx get", stick.statusCommand());
+
+        // Real CLI output, captured from the device 2026-10-27.
+        check("parses real `fanctl get` output", "Quiet", fan.labelFor("quiet"));
+        check("parses real `stickfx get` output", "Charge", stick.labelFor("charge"));
+        check("tolerates trailing newline and case", "Balanced", fan.labelFor("  BALANCED\n"));
+
+        // --- cycling ----------------------------------------------------------
+        check("fan quiet -> balanced", "balanced", fan.next("quiet"));
+        check("fan balanced -> performance", "performance", fan.next("balanced"));
+        check("fan performance wraps to quiet", "quiet", fan.next("performance"));
+
+        // The state outside the cycle. `fanctl get` reports "default" when no
+        // tier is applied and `stickfx get` reports "off". A tap must enter at
+        // the FIRST entry: entering at the second would make the first
+        // unreachable by tapping, which is the usual way a cycling control
+        // goes wrong.
+        check("fan enters the cycle at the first tier from default",
+              "quiet", fan.next("default"));
+        check("stick enters the cycle at its first entry from an unknown state",
+              "off", stick.next("something-else"));
+        check("an unreadable state still enters at the first entry",
+              "quiet", fan.next(null));
+
+        check("default is shown as the inactive label", "Stock", fan.labelFor("default"));
+        check("default does not look active", false, fan.isActive("default"));
+        check("a tier looks active", true, fan.isActive("performance"));
+
+        // Every entry must be reachable by repeated tapping from any start.
+        // Guards against a cycle that skips or strands an option.
+        for (QuickSetting q : new QuickSetting[] { fan, stick }) {
+            java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+            String w = q.next("completely-unknown");
+            for (int i = 0; i < q.wires.length; i++) { seen.add(w); w = q.next(w); }
+            check(q.kind + ": every state is reachable by tapping",
+                  Arrays.toString(q.wires), seen.toString().replace("[", "[").replace("]", "]"));
+        }
+
+        // --- nothing injectable reaches a root command ------------------------
+        List<String> qInjectable = new ArrayList<>();
+        for (QuickSetting q : new QuickSetting[] { fan, stick }) {
+            List<String> cmds = new ArrayList<>();
+            cmds.add(q.statusCommand());
+            for (String w : q.wires) cmds.add(q.setCommand(w));
+            for (String c : cmds) {
+                if (c.matches(".*[;&|$`><\\\\\'\"\\n].*")) qInjectable.add(c);
+            }
+        }
+        check("no quick-setting command contains a shell metacharacter", "[]", qInjectable.toString());
+
+        // Labels and wires must stay index-aligned, or the panel shows one
+        // state and applies another.
+        List<String> misaligned = new ArrayList<>();
+        for (QuickSetting q : new QuickSetting[] { fan, stick }) {
+            if (q.wires.length != q.labels.length) misaligned.add(q.kind + " length");
+            for (int i = 0; i < q.wires.length; i++) {
+                if (!q.labels[i].equals(q.labelFor(q.wires[i]))) misaligned.add(q.kind + " " + q.wires[i]);
+            }
+        }
+        check("labels stay aligned with wires", "[]", misaligned.toString());
+
+        // --- per-screen brightness --------------------------------------------
+        // The framework scale is float [0,1]; the backlight node is 0-4095 and
+        // the system setting is 0-255. Three scales on one device, so the
+        // conversions are worth pinning.
+        check("slider bottom is the usable minimum, not zero",
+              0.01f, Brightness.fromSlider(0));
+        check("slider top is full", 1.0f, Brightness.fromSlider(Brightness.STEPS));
+        check("a value round-trips through the slider",
+              50, Brightness.toSlider(Brightness.fromSlider(50)));
+
+        // Every slider position must round-trip, or dragging would make the
+        // thumb jump under the finger.
+        List<String> rt = new ArrayList<>();
+        for (int i = 0; i <= Brightness.STEPS; i++) {
+            if (Brightness.toSlider(Brightness.fromSlider(i)) != i) rt.add(String.valueOf(i));
+        }
+        check("every slider position round-trips", "[]", rt.toString());
+
+        // The minimum is deliberately not 0: at 0.0 the panel reads
+        // brightness=1 and looks switched off rather than dim. Confirmed on
+        // hardware 2026-10-28.
+        check("clamp pulls zero up to the minimum", 0.01f, Brightness.clamp(0f));
+        check("clamp pulls negatives up", 0.01f, Brightness.clamp(-5f));
+        check("clamp pulls above-range down", 1.0f, Brightness.clamp(2f));
+        check("clamp handles NaN", 0.01f, Brightness.clamp(Float.NaN));
+        check("no slider position can command zero", true,
+              Brightness.fromSlider(0) >= Brightness.MIN);
+
+        // --- commands ---------------------------------------------------------
+        check("get command targets the display",
+              "cmd display get-brightness --id 1", Brightness.getCommand(1));
+        check("set command formats the float and the id",
+              "cmd display set-brightness 0.3000 --id 1", Brightness.setCommand(1, 0.3f));
+        check("set command clamps before formatting",
+              "cmd display set-brightness 0.0100 --id 1", Brightness.setCommand(1, 0f));
+
+        // A comma decimal separator would split into two shell arguments.
+        // Force a locale that uses one and assert the output is unchanged.
+        java.util.Locale saved = java.util.Locale.getDefault();
+        try {
+            java.util.Locale.setDefault(java.util.Locale.GERMANY);
+            check("set command is locale-independent",
+                  "cmd display set-brightness 0.3500 --id 0", Brightness.setCommand(0, 0.35f));
+        } finally {
+            java.util.Locale.setDefault(saved);
+        }
+
+        List<String> bInject = new ArrayList<>();
+        for (int id : new int[] { 0, 1, 7 }) {
+            for (float v : new float[] { 0f, 0.01f, 0.5f, 1f }) {
+                String c = Brightness.setCommand(id, v);
+                if (c.matches(".*[;&|$`><\\\\\'\"\\n].*")) bInject.add(c);
+            }
+            if (Brightness.getCommand(id).matches(".*[;&|$`><\\\\\'\"\\n].*"))
+                bInject.add(Brightness.getCommand(id));
+        }
+        check("no brightness command contains a shell metacharacter", "[]", bInject.toString());
+
+        // --- reading it back --------------------------------------------------
+        // Real output, captured from the device 2026-10-28.
+        check("parses a real get-brightness reply", 0.38188976f, Brightness.parse("0.38188976"));
+        check("tolerates a trailing newline", 0.6f, Brightness.parse("0.6\n"));
+
+        // An unreadable value must be -1, not 0. A slider showing 0 because a
+        // command failed invites dragging a control connected to nothing.
+        check("an empty reply is unknown, not zero", -1f, Brightness.parse(""));
+        check("a null reply is unknown", -1f, Brightness.parse(null));
+        check("an error string is unknown", -1f, Brightness.parse("cmd: not found"));
+        check("an out-of-range reply is unknown", -1f, Brightness.parse("4095"));
+        check("a negative reply is unknown", -1f, Brightness.parse("-0.5"));
+
+        // The icon sits at the right end of the track, so its colour has to
+        // follow whether the fill has reached it. A fixed colour vanishes at
+        // one end: a dark icon was invisible on the top slider at anything
+        // below full brightness.
+        check("icon is on the dark track at low brightness", false, Brightness.iconOnFill(0));
+        check("icon is on the dark track mid-way", false, Brightness.iconOnFill(50));
+        check("icon is on the fill at full brightness", true, Brightness.iconOnFill(100));
+        check("the flip point is inside the track", true,
+              Brightness.ICON_ON_FILL_FROM > 0 && Brightness.ICON_ON_FILL_FROM < 100);
+
+        check("percent is reported for display", 60, Brightness.percent(0.6f));
+        check("percent of the minimum is 1", 1, Brightness.percent(Brightness.MIN));
+
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");
         if (fail != 0) System.exit(1);

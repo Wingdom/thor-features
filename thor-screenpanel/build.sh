@@ -21,8 +21,22 @@ rm -rf out; mkdir -p out/res out/classes out/dex
 echo "== unit tests (host, no device) =="
 mkdir -p out/test
 PKG_PATH=com/thorfeatures/screenpanel
+
+# Source files borrowed from the Quick Settings tiles. These are compiled in,
+# not copied: FanMode and StickMode define the exact strings passed to a root
+# binary, and a second copy would be a second source of truth. If a tile is
+# moved or a tier renamed, this build fails loudly here rather than the panel
+# silently invoking an argument its CLI no longer accepts.
+SHARED_SRC="../thor-fan-tile/src/com/thorfeatures/fanctl/FanMode.java
+            ../thor-stickfx-tile/src/com/thorfeatures/stickfx/StickMode.java"
+for f in $SHARED_SRC; do
+    [ -f "$f" ] || { echo "missing shared source: $f"; exit 1; }
+done
 javac --release 17 -nowarn -d out/test \
+    $SHARED_SRC \
     "src/$PKG_PATH/ScreenMode.java" "src/$PKG_PATH/PanelCommands.java" \
+    "src/$PKG_PATH/QuickSetting.java" "src/$PKG_PATH/QuickSettings.java" \
+    "src/$PKG_PATH/Brightness.java" \
     "test/$PKG_PATH/TestMain.java" || { echo "test compile failed"; exit 1; }
 java -cp out/test com.thorfeatures.screenpanel.TestMain || { echo "build aborted: unit tests failed"; exit 1; }
 ./tests/test_action.sh || { echo "build aborted: action script tests failed"; exit 1; }
@@ -42,7 +56,7 @@ echo
 echo "== compile =="
 mkdir -p out/gen
 javac --release 17 -nowarn -cp "$AJ" -d out/classes \
-    $(find src out/gen -name '*.java') || exit 1
+    $SHARED_SRC $(find src out/gen -name '*.java') || exit 1
 echo "  $(find out/classes -name '*.class' | wc -l) classes"
 
 echo

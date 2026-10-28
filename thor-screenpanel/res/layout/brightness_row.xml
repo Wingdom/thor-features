@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One screen's brightness, shaped like the notification shade's slider:
+     a thick fully-rounded track, accent fill, thin vertical thumb, and the
+     brightness icon sitting at the right-hand end of the track.
+
+     The screen's name sits to the LEFT of the track rather than above it. The
+     shade needs no label because it has one slider; this panel has two, and
+     stacking a label above each would cost the vertical space this layout was
+     just asked to save. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="3dp"
+    android:paddingBottom="3dp">
+
+    <TextView
+        android:id="@+id/bright_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="58dp"
+        android:textColor="@color/panel_on_surface_dim"
+        android:textSize="12sp" />
+
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="10dp">
+
+        <SeekBar
+            android:id="@+id/bright_bar"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:minHeight="40dp"
+            android:maxHeight="40dp"
+            android:progressDrawable="@drawable/bright_track"
+            android:thumb="@drawable/bright_thumb"
+            android:splitTrack="false"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:thumbOffset="2dp"
+            android:max="100" />
+
+        <ImageView
+            android:id="@+id/bright_icon"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="end|center_vertical"
+            android:layout_marginEnd="12dp"
+            android:src="@drawable/ic_brightness"
+            android:contentDescription="@null" />
+    </FrameLayout>
+</LinearLayout>

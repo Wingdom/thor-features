@@ -44,6 +44,28 @@ public final class RootClient {
         return PanelCommands.parseMovable(r.out);
     }
 
+    /**
+     * The state a quick setting's CLI reports, trimmed, or null when the call
+     * fails.
+     *
+     * null and "the CLI reported something unrecognised" are deliberately NOT
+     * the same thing. A missing module means the control cannot be offered at
+     * all; an unrecognised state means the control is present but idle, which
+     * is a normal reading - `fanctl get` says "default" whenever no tier is
+     * applied.
+     */
+    public String quickState(QuickSetting q) {
+        Result r = run(q.statusCommand());
+        if (r.code != 0) return null;
+        String out = r.out.trim();
+        return out.isEmpty() ? null : out;
+    }
+
+    /** Select a state on a quick setting. True only on a clean exit. */
+    public boolean quickSet(QuickSetting q, String wire) {
+        return run(q.setCommand(wire)).code == 0;
+    }
+
     /** True when screenblank answers - module installed and root granted. */
     public boolean available() {
         return run(PanelCommands.SCREENBLANK + " status").code == 0;

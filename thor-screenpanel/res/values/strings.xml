@@ -8,4 +8,16 @@
     <string name="mode_bottom">Only bottom screen</string>
     <string name="no_root">Root required — grant the Magisk prompt</string>
     <string name="failed">Could not change mode</string>
+    <string name="quick_title">Quick settings</string>
+    <string name="quick_fan">Fan</string>
+    <string name="quick_stick">Stick LEDs</string>
+    <string name="quick_move">Move app</string>
+    <string name="quick_unavailable">Not installed</string>
+    <string name="quick_move_hint">Other screen</string>
+    <string name="quick_move_none">Nothing moved</string>
+    <string name="bright_title">Brightness</string>
+    <string name="bright_top">Top</string>
+    <string name="bright_bottom">Bottom</string>
+    <string name="bright_unknown">—</string>
+    <string name="bright_locked">Needs thor-screenbright</string>
 </resources>

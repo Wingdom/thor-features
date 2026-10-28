@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A thick, fully-rounded slider track matching the notification shade's
+     brightness control: dark unfilled portion, accent fill, no visible
+     secondary progress. The shade's track is about 40dp tall with ends
+     rounded to a half-circle, so the radius is half the height. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/bright_track_bg" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <solid android:color="@color/bright_track_fill" />
+                <corners android:radius="20dp" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

@@ -1,44 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Mode row, laid out the way stock's own Mode panel was: three
-     options in a rounded card, the active one marked with a filled accent
-     circle. Stock's other rows (brightness, volume, FPS, the Task and
-     Settings tabs) are deliberately not here yet - Mode is the half that
-     carries the screen on/off control. -->
+<!-- Two stacked cards: a quick-settings row, and stock's "Mode" row.
+
+     Mode sits at the BOTTOM, nearest the AYN button, at the user's request
+     (2026-10-27) - it is the row reached most often and the one the button
+     exists for. Do not reorder these again.
+
+     Stock's panel put its mode options and its quick-settings tiles on
+     separate tabs. These are one scrolling column instead, because the bottom
+     screen has the height spare and a tap to reach the fan is a tap the
+     physical button was supposed to save. The controls are the same either
+     way, so this can become tabs later without touching their logic. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
     <LinearLayout
-        android:id="@+id/card"
+        android:id="@+id/panel_root"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_margin="12dp"
-        android:background="@drawable/panel_card"
-        android:orientation="vertical"
-        android:paddingTop="14dp"
-        android:paddingBottom="16dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="24dp"
-            android:layout_marginBottom="10dp"
-            android:text="@string/mode_title"
-            android:textColor="@color/panel_on_surface_dim"
-            android:textSize="12sp"
-            android:letterSpacing="0.08"
-            android:textAllCaps="true" />
+        android:layout_marginStart="26dp"
+        android:layout_marginEnd="26dp"
+        android:layout_marginBottom="12dp"
+        android:orientation="vertical">
 
         <LinearLayout
+            android:id="@+id/card_bright"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:baselineAligned="false">
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:paddingTop="10dp"
+            android:paddingBottom="8dp">
 
-            <include layout="@layout/mode_item" android:id="@+id/mode_dual" />
-            <include layout="@layout/mode_item" android:id="@+id/mode_top" />
-            <include layout="@layout/mode_item" android:id="@+id/mode_bottom" />
+
+            <include layout="@layout/brightness_row" android:id="@+id/bright_top" />
+            <include layout="@layout/brightness_row" android:id="@+id/bright_bottom" />
         </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/card_quick"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:paddingTop="10dp"
+            android:paddingBottom="12dp">
+
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:baselineAligned="false">
+
+                <include layout="@layout/quick_item" android:id="@+id/quick_fan" />
+                <include layout="@layout/quick_item" android:id="@+id/quick_stick" />
+                <include layout="@layout/quick_item" android:id="@+id/quick_move" />
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:paddingTop="10dp"
+            android:paddingBottom="12dp">
+
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:baselineAligned="false">
+
+                <include layout="@layout/mode_item" android:id="@+id/mode_dual" />
+                <include layout="@layout/mode_item" android:id="@+id/mode_top" />
+                <include layout="@layout/mode_item" android:id="@+id/mode_bottom" />
+            </LinearLayout>
+        </LinearLayout>
+
     </LinearLayout>
 </FrameLayout>

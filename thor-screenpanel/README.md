@@ -95,8 +95,23 @@ restoring its task across reboots, and a restored panel with nothing behind it
 paints the bottom screen black — which looked exactly like the screen failing
 to turn on.
 
+## What is in the panel
+
+**Brightness** — a slider per screen, styled after the notification shade's.
+Needs `thor-screenbright`, which decouples the two panels; without it both
+screens share one brightness and the bottom slider does nothing. The floor is
+1%, not 0: at 0 the panel looks switched off rather than dim, and "off" has its
+own control in the Mode row.
+
+**Quick settings** — Fan and Stick LEDs cycle through the same states their
+Quick Settings tiles offer, and Move app sends the foreground app to the other
+screen. These reuse the tiles' own mode definitions rather than copying them,
+so a renamed state breaks the build instead of silently invoking an argument
+the CLI no longer accepts.
+
+**Mode** — the three screen modes, kept at the bottom, nearest the button.
+
 ## Not yet
 
-Stock's other tabs (Settings / Task / Application), the per-screen brightness
-and per-output volume sliders, and the 60/90/120 FPS control. Mode is the half
-that carries the screen on/off feature.
+Stock's other tabs (Settings / Task / Application), the per-output volume
+sliders, and the 60/90/120 FPS control.
