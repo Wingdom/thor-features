@@ -1,6 +1,6 @@
 # Third-party files
 
-This repository is mostly original shell, Java and Magisk packaging. Three
+This repository is mostly original shell, Java and Magisk packaging. Five
 files come from elsewhere, and their terms are not ours to set. They are listed
 here so anyone redistributing this work knows exactly what they are handling.
 
@@ -52,6 +52,29 @@ The reason the stock binary is used at all is purely that 1.1.1 checks a
 
 Kept as a fixture because `display-match` generates its overlay *from the ROM's
 own file*, so the only honest test of that generator is the real file.
+
+## 4. `thor-screenbright/stock/display_layout_configuration.xml`
+
+| | |
+|---|---|
+| **What** | LineageOS's own `/vendor/etc/displayconfig/display_layout_configuration.xml` for this device |
+| **Licence** | **Apache-2.0** — SPDX headers intact in the file |
+| **Origin** | The LineageOS 24 vendor image, pulled before the module was installed |
+
+Kept in the repo rather than beside the local evidence so the module's tests
+run for anyone who clones it. Those tests assert the overlay differs from this
+file by exactly one element, which is only meaningful against the real thing.
+
+## 5. `thor-screenbright/magisk/system/vendor/etc/displayconfig/display_layout_configuration.xml`
+
+| | |
+|---|---|
+| **What** | The file above, with one `<leadDisplayAddress>` element removed |
+| **Licence** | **Apache-2.0** — a derivative of LineageOS's file; SPDX headers intact |
+| **Origin** | Generated from entry 4; every other byte is unchanged |
+
+This is the whole of `thor-screenbright`. It is a modified copy of a LineageOS
+file rather than original work, which is why it is listed here.
 
 ## This repository's own terms
 
