@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A four-blade fan.
+
+     Drawn as ONE blade rotated four times rather than as a single path
+     covering the whole shape. That is deliberate: the first version of this
+     icon was one long hand-written path and came out lopsided and unreadable,
+     because there is no way to check a path like that short of rendering it.
+     With a rotation group the symmetry is structural - any error in the blade
+     is repeated identically four times instead of making the icon crooked -
+     and the one blade is short enough to reason about.
+
+     The blades stop short of the centre (they end at y=9.5, the hub starts at
+     y=9.9) so the hub reads as a separate disc. Letting them meet turns the
+     middle into a blob at small sizes.
+
+     Blade weight was chosen by rendering, not by eye in source: a thinner
+     first attempt looked fine at 96 px and came out spindly at the size the
+     system actually draws an app icon. Checked at 24, 48 and 96 px on both
+     light and dark backgrounds, and against the real App info page. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="?android:attr/colorControlNormal">
+    <group android:pivotX="12" android:pivotY="12" android:rotation="0">
+        <path android:fillColor="@android:color/white"
+            android:pathData="M12,9.5 C11,5.9 12.8,2.2 18,1.6 C20,5 17.4,8.6 12,9.5 Z" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="90">
+        <path android:fillColor="@android:color/white"
+            android:pathData="M12,9.5 C11,5.9 12.8,2.2 18,1.6 C20,5 17.4,8.6 12,9.5 Z" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="180">
+        <path android:fillColor="@android:color/white"
+            android:pathData="M12,9.5 C11,5.9 12.8,2.2 18,1.6 C20,5 17.4,8.6 12,9.5 Z" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="270">
+        <path android:fillColor="@android:color/white"
+            android:pathData="M12,9.5 C11,5.9 12.8,2.2 18,1.6 C20,5 17.4,8.6 12,9.5 Z" />
+    </group>
+    <path android:fillColor="@android:color/white"
+        android:pathData="M12,9.9 A2.1,2.1 0 1,1 11.99,9.9 Z" />
+</vector>

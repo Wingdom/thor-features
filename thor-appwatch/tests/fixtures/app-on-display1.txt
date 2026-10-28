@@ -1,0 +1,11 @@
+Display #1 (activities from top to bottom):
+  * Task{55ca1e1 #262 type=standard A=10082:com.android.deskclock U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    fullscreenRequestAllowMode=NONE
+    isSleeping=false
+    topResumedActivity=ActivityRecord{204869448 u0 com.android.deskclock/.DeskClock t262}
+Display #0 (activities from top to bottom):
+
+  * Task{52dac38 #261 type=standard I=com.android.documentsui/.files.FilesActivity U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    fullscreenRequestAllowMode=NONE
+    isSleeping=false
+    topResumedActivity=ActivityRecord{151781531 u0 com.android.documentsui/.files.FilesActivity t261}

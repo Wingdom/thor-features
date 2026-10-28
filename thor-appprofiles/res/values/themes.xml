@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material You without a support library.
+
+         The system_* colour resources are the real dynamic palette the
+         platform derives from the wallpaper (API 31+), so referencing them
+         directly gives Material You theming in a plain platform app with no
+         Gradle, no AppCompat and no Material Components - which is what the
+         rest of this project builds with (aapt2 + javac + d8). Same approach
+         as thor-screenpanel. -->
+    <style name="ProfilesTheme" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:colorBackground">@color/surface</item>
+        <item name="android:windowBackground">@color/surface</item>
+        <item name="android:textColorPrimary">@color/on_surface</item>
+        <item name="android:textColorSecondary">@color/on_surface_variant</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- thor-appprofiles - per-app fan profiles for the AYN Thor.
+
+     The app is the only user interface for the feature: you open it, assign a
+     fan tier to the apps you care about, and the thor-appwatch daemon applies
+     them as you switch apps. There is deliberately no Quick Settings tile and
+     no entry in the AYN button panel - a per-app profile is set once and then
+     forgotten, which is configuration rather than something you reach for
+     mid-game, and the global fan baseline already has its own tile.
+
+     The app holds NO permissions. Everything that touches the device goes
+     through `su` to the appwatch and fanctl commands installed by their Magisk
+     modules, the same arrangement thor-screenpanel and the tiles already use.
+     QUERY_ALL_PACKAGES is not requested either: the launcher-intent query
+     below is visible without it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.thorfeatures.appprofiles">
+
+    <!-- Needed on API 30+ to see other packages at all. This declares the
+         narrowest thing that works: apps with a launcher icon. It is not the
+         QUERY_ALL_PACKAGES permission, which this app does not want and does
+         not need. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_appprofiles"
+        android:allowBackup="false"
+        android:theme="@style/ProfilesTheme">
+
+        <activity
+            android:name=".ProfilesActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -15,10 +15,10 @@ stock LineageOS build with Magisk.
 
 ## What's here
 
-Six features. Several are a **Magisk module** (a root CLI) paired with an
-**APK** (a Quick Settings tile that drives it). The module is the functional
-half — in most cases it is fully usable on its own, which is also the low-risk
-way to try one.
+Seven features. Most are a **Magisk module** (a root CLI) paired with an
+**APK** that drives it — usually a Quick Settings tile, once a full app. The
+module is the functional half, and in most cases it is fully usable on its
+own, which is also the low-risk way to try one.
 
 | Feature | Magisk module | APK | Module useful without the APK? |
 |---|---|---|---|
@@ -28,6 +28,7 @@ way to try one.
 | Screen on/off | `thor-screenblank` v0.1.0 | — | **Yes** — module only |
 | AYN button binding | `thor-aynkey` v0.1.0 | — | Installs, but **inert** until an action script exists |
 | The AYN button panel | — | `thor-screenpanel` | **APK only** — see below |
+| Per-app fan profiles | `thor-appwatch` v0.1.0 | `thor-appprofiles` | CLI works, but the **app is the interface** |
 
 And five standalone modules, with no APK and no counterpart:
 
@@ -41,12 +42,14 @@ And five standalone modules, with no APK and no counterpart:
 
 ## Dependencies
 
-Most pieces are independent. Three are not:
+Most pieces are independent. Two groups are not:
 
 ```
 thor-aynkey  ──> /data/adb/thor-aynkey/action.sh ──> thor-screenpanel (APK)
                                                  └─> thor-screenblank
 thor-screenpanel ──> screenblank + screenmove
+
+thor-appprofiles (APK) ──> thor-appwatch ──> thor-fanctl
 ```
 
 - **`thor-screenpanel` needs three things present**: `screenblank`,
@@ -59,6 +62,11 @@ thor-screenpanel ──> screenblank + screenmove
   Magisk modules writing the same `/system` path would conflict.
 - Each tile requires **its own module**, and nothing else. Each tile's README
   lists the exact CLI commands it calls.
+- **`thor-appwatch` needs `thor-fanctl`** and refuses to install without it,
+  because the fan tier is the only thing it applies. `thor-appprofiles` in turn
+  needs `thor-appwatch`. Unusually, the two also share a **file format** — the
+  profile table — not just a set of commands, so that format is part of the
+  contract between them.
 
 ### Version skew is the thing to watch
 
@@ -106,9 +114,13 @@ root, no emulator.
 cd thor-fanctl && ./build.sh
 ```
 
-As of this release: **419 host assertions, all passing** — 232 in shell test
-scripts and 187 in Java (`thor-screenpanel` 46, `thor-screenmove-tile` 52,
-`thor-stickfx-tile` 46, `thor-fan-tile` 43).
+As of this release: **596 host assertions, all passing** — 349 in shell test
+scripts and 247 in Java (`thor-appprofiles` 60, `thor-screenpanel` 46,
+`thor-screenmove-tile` 52, `thor-stickfx-tile` 46, `thor-fan-tile` 43).
+
+Two components additionally run checks **on the device itself**, because the
+host suite runs under bash while the modules run under Android's mksh:
+`fanctl selftest` and `appwatch selftest`.
 
 The Java tests need only a JDK and, for the tile components, an `android.jar`
 to compile against. Packaging an APK additionally needs `aapt2`, `d8`,

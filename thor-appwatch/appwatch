@@ -1,0 +1,494 @@
+#!/system/bin/sh
+# appwatch - apply per-app settings when an app comes to the foreground.
+#
+# One watcher, many appliers. This daemon owns the single foreground-app
+# signal and dispatches to whichever appliers have a key in the table. Only
+# the `fan` key is implemented; the others are lines nobody writes yet.
+#
+# Why the events buffer and not `ActivityTaskManager: Displayed`:
+#   `Displayed` is logged when an activity window is drawn for the first time.
+#   An app resumed from background - which is most real app switching - is
+#   already drawn, so it logs nothing at all. Measured on hardware: resuming
+#   Calculator from background produced no `Displayed` line while reusing its
+#   existing task id. `wm_set_resumed_activity` in the events buffer fired for
+#   every case, including that one and including a Home press.
+#
+# Why one long-lived pipe and never a poll:
+#   Process spawns on this device are expensive enough to change what is being
+#   measured - a per-item rescan elsewhere in this project took 14 minutes and
+#   heated the SoC enough to spin the fan up by itself. One `logcat` pipe for
+#   the life of the boot costs one process.
+
+# --------------------------------------------------------------- pure logic --
+# Everything above the LIB guard is host-testable with no device attached.
+
+# parse_resume_line <logcat line>
+#   Emits "<displayId> <package>" for a resume event, or returns 1.
+#
+# The payload is bracketed - "[0,pkg/.Activity,reason]" - which is a valid
+# glob character class, so every expansion here is quoted and the bracket in
+# a pattern is escaped. An unquoted expansion would perform pathname
+# expansion and destroy the payload; "${x#*[}" is additionally an
+# unterminated bracket expression and errors outright on some shells. Both
+# mistakes have already cost this project a debugging session elsewhere.
+parse_resume_line() {
+    _line="$1"
+    case "$_line" in
+        *"wm_set_resumed_activity:"*) ;;
+        *) return 1 ;;
+    esac
+    _p="${_line#*wm_set_resumed_activity:}"
+    _p="${_p#*\[}"
+    _p="${_p%%\]*}"
+    _disp="${_p%%,*}"
+    _rest="${_p#*,}"
+    _comp="${_rest%%,*}"
+    _pkg="${_comp%%/*}"
+    # Reject anything whose display field is not a plain number: a malformed
+    # or truncated line must be skipped, not guessed at.
+    case "$_disp" in ''|*[!0-9]*) return 1 ;; esac
+    [ -n "$_pkg" ] || return 1
+    case "$_pkg" in *" "*) return 1 ;; esac
+    printf '%s %s\n' "$_disp" "$_pkg"
+}
+
+# tier_rank <tier>
+#   Cooling order, from fanctl's own offsets: quiet 0, balanced -5000,
+#   performance -10000. Offsets are negative only - lowering a trip adds
+#   cooling - so the three tiers are monotonic and a maximum is well defined.
+#   Anything else, INCLUDING "default", ranks 0 and is not a tier: `fanctl
+#   default` restores stock originals and undoes the usb-therm fix that is the
+#   whole reason that module exists.
+tier_rank() {
+    case "$1" in
+        quiet)       echo 1 ;;
+        balanced)    echo 2 ;;
+        performance) echo 3 ;;
+        *)           echo 0 ;;
+    esac
+}
+
+# max_tier <a> <b> - the cooler-running of two tiers; empty args ignored.
+max_tier() {
+    [ -n "$1" ] || { echo "$2"; return 0; }
+    [ -n "$2" ] || { echo "$1"; return 0; }
+    if [ "$(tier_rank "$1")" -ge "$(tier_rank "$2")" ]
+    then echo "$1"
+    else echo "$2"
+    fi
+}
+
+# table_value <table file> <package> <key>
+#   One awk pass, no inner parsing: the table is long format, three fixed
+#   columns, so a key lookup never depends on column position agreed between
+#   consumers. Unknown keys simply do not match.
+table_value() {
+    [ -f "$1" ] || return 1
+    awk -v p="$2" -v k="$3" '$1==p && $2==k {print $3; exit}' "$1"
+}
+
+# effective_fan_tier <table file> <baseline> <top pkg> <bottom pkg>
+#   max(baseline, tier(top), tier(bottom)). Both displays count: the top
+#   screen can be off with an emulator running on the bottom panel, so an app
+#   on display 1 must be able to drive the fan. Resolving by "most recent
+#   resume" instead would let an unprofiled app on the bottom screen drop the
+#   fan while a game is still running on top.
+#
+#   Returns 1 and emits nothing when the baseline is not one of the three
+#   tiers. A baseline of "default" means the user has opted out of fan
+#   management entirely, and this daemon must never call `fanctl default`.
+effective_fan_tier() {
+    _tbl="$1"; _eff="$2"
+    [ "$(tier_rank "$_eff")" -gt 0 ] || return 1
+    for _pkg in "$3" "$4"; do
+        [ -n "$_pkg" ] || continue
+        _v=$(table_value "$_tbl" "$_pkg" fan 2>/dev/null)
+        [ "$(tier_rank "$_v")" -gt 0 ] || continue
+        _eff=$(max_tier "$_eff" "$_v")
+    done
+    echo "$_eff"
+}
+
+# should_apply <currently applied> <effective>
+#   Each fan apply is roughly 30 trip writes plus a settle nudge, so a
+#   re-selection of the same tier must not reach the device.
+should_apply() {
+    [ -n "$2" ] || return 1
+    [ "$(tier_rank "$2")" -gt 0 ] || return 1
+    [ "$1" != "$2" ]
+}
+
+# parse_foreground
+#   Reads `dumpsys activity activities` on stdin and emits one
+#   "<displayId> <package>" line per display, from that display's
+#   topResumedActivity.
+#
+#   This, not the logcat event payload, is the foreground oracle. The event is
+#   only a trigger. Measured 2026-10-28: the launcher emits
+#   `wm_set_resumed_activity: [0,...cocoonshell/.ExternalDisplayActivity,
+#   onChildPositionChanged]` - display 0 - while dumpsys shows display 0 is
+#   really the foreground app. Trusting the payload made the daemon apply a
+#   tier, revert it and re-apply it on a single launch: three full fanctl
+#   applies, ~30 trip writes each.
+#
+#   Two traps, both visible in the real fixtures:
+#     - Display sections are NOT in id order. dumpsys lists the FOCUSED
+#       display first, so "Display #1" can precede "Display #0". The section
+#       id is tracked rather than inferred from position.
+#     - A Task line carries its own component (`A=...` / `I=pkg/.Activity`),
+#       so matching a bare package would read the wrong one. Only
+#       `topResumedActivity=ActivityRecord{` is matched, and only the first
+#       per section.
+parse_foreground() {
+    awk '
+      /Display #[0-9]+/ {
+          if (match($0, /#[0-9]+/)) {
+              cur = substr($0, RSTART + 1, RLENGTH - 1)
+          }
+          next
+      }
+      cur != "" && done[cur] != 1 && /topResumedActivity=ActivityRecord\{/ {
+          n = index($0, "ActivityRecord{")
+          rest = substr($0, n + 15)
+          split(rest, f, " ")
+          comp = f[3]
+          sub(/\/.*/, "", comp)
+          if (comp != "") { print cur " " comp; done[cur] = 1 }
+      }
+    '
+}
+
+# Guard so the host test harness can source this file for the pure logic only.
+[ "${APPWATCH_LIB:-0}" = 1 ] && return 0 2>/dev/null
+
+# ------------------------------------------------------------- device layer --
+# Deliberately not written yet. The pure logic above is host-tested first,
+# then the watch loop is prototyped at runtime over adb, and only then does
+# any of it become a Magisk module. See ../APP-PROFILES.local.md.
+# ------------------------------------------------------------- device layer --
+STATE=${STATE:-/data/adb/thor-appwatch}
+TABLE="$STATE/profiles"
+BASEFILE="$STATE/baseline"
+APPLIED="$STATE/applied"
+ENABLED="$STATE/enabled"
+PIDFILE="$STATE/pid"
+FANCTL=${FANCTL:-/system/bin/fanctl}
+TAG=appwatch
+
+# NOTE: this helper must not be called `log`. A shell function shadows a
+# binary of the same name, so a `log` helper whose body calls `log` recurses
+# into itself forever instead of reaching /system/bin/log.
+say() { echo "$TAG: $*" >&2; /system/bin/log -p i -t "$TAG" "$*" 2>/dev/null; }
+die() { say "$*"; exit 1; }
+
+# -- small state helpers. Every one of these is a read; nothing here guesses.
+read_key()  { [ -f "$1" ] && awk -v k="$2" '$1==k {print $2; exit}' "$1"; }
+write_key() { mkdir -p "$STATE"; printf '%s\t%s\n' "$2" "$3" > "$1"; }
+
+is_enabled()  { [ "$(cat "$ENABLED" 2>/dev/null)" != "0" ]; }
+applied_fan() { read_key "$APPLIED" fan; }
+baseline_fan() { read_key "$BASEFILE" fan; }
+
+# fanctl's persisted mode. Only meaningful while we hold no override - once we
+# have applied one, this returns OUR value, not the user's baseline. That is
+# exactly why the baseline is recorded rather than read back later.
+fanctl_mode() { [ -x "$FANCTL" ] && "$FANCTL" get 2>/dev/null | tr -d '\r\n'; }
+
+# set_fan <tier>
+#   Verified by read-back, never by exit code: fanctl's own bring-up found a
+#   write that read back correct while not being in effect, and this project's
+#   rule is to check the result rather than trust the status.
+set_fan() {
+    _want="$1"
+    # Never exit from here: this runs inside the watch loop, and a transient
+    # fanctl failure must not take the daemon down with it.
+    [ "$(tier_rank "$_want")" -gt 0 ] || { say "refusing non-tier '$_want'"; return 1; }
+    [ -x "$FANCTL" ] || { say 'fanctl not installed'; return 1; }
+    "$FANCTL" "$_want" >/dev/null 2>&1
+    _got=$(fanctl_mode)
+    [ "$_got" = "$_want" ] \
+      || { say "fanctl reports '$_got' after applying '$_want'"; return 1; }
+    write_key "$APPLIED" fan "$_want"
+    say "fan -> $_want"
+}
+
+# Record the user's baseline at the moment we first take over, and never
+# recompute it afterwards.
+record_baseline() {
+    [ -n "$(baseline_fan)" ] && return 0
+    _m=$(fanctl_mode)
+    if [ "$(tier_rank "$_m")" -gt 0 ]; then
+        write_key "$BASEFILE" fan "$_m"
+        say "baseline recorded: $_m"
+    else
+        # `default`, empty, or anything else is not a tier. The user has opted
+        # out of fan management; never call `fanctl default` to "restore" it.
+        say "baseline '$_m' is not a tier - not engaging"
+        return 1
+    fi
+}
+
+restore_baseline() {
+    _b=$(baseline_fan)
+    [ -n "$_b" ] || return 0
+    if [ "$_b" != "$(applied_fan)" ]; then
+        set_fan "$_b" || return 1
+    fi
+    rm -f "$BASEFILE" "$APPLIED"
+    say "baseline restored: $_b"
+}
+
+# resolve_and_apply <top pkg> <bottom pkg>
+resolve_and_apply() {
+    is_enabled || return 0
+    _top="$1"; _bot="$2"
+    _o_top=$(table_value "$TABLE" "$_top" fan 2>/dev/null)
+    _o_bot=$(table_value "$TABLE" "$_bot" fan 2>/dev/null)
+    if [ "$(tier_rank "$_o_top")" -eq 0 ] && [ "$(tier_rank "$_o_bot")" -eq 0 ]; then
+        restore_baseline
+        return 0
+    fi
+    record_baseline || return 0
+    _eff=$(effective_fan_tier "$TABLE" "$(baseline_fan)" "$_top" "$_bot") || return 0
+    should_apply "$(applied_fan)" "$_eff" || return 0
+    set_fan "$_eff"
+}
+
+# Read the authoritative foreground, per display.
+read_foreground() { dumpsys activity activities 2>/dev/null | parse_foreground; }
+
+# Read the current foreground and act on it. Idempotent: should_apply makes a
+# repeat call free, which is what lets the startup path resolve twice.
+resolve_once() {
+    _fg=$(read_foreground)
+    resolve_and_apply \
+        "$(echo "$_fg" | awk '$1=="0" {print $2; exit}')" \
+        "$(echo "$_fg" | awk '$1=="1" {print $2; exit}')"
+}
+
+# -- the watch loop ----------------------------------------------------------
+# One long-lived logcat pipe, used only to know that SOMETHING changed. The
+# truth then comes from dumpsys - see parse_foreground for why the event
+# payload cannot be trusted for this.
+#
+# There is deliberately NO debounce timer. Redundant triggers cost one dumpsys
+# and then stop at the no-op guard, which is cheap; a timer would add a
+# process per app switch to save a fraction of that. The documentsui
+# trampoline (two events 16 ms apart) resolves to the same foreground both
+# times and so applies nothing twice.
+daemon_loop() {
+    mkdir -p "$STATE"
+    echo $$ > "$PIDFILE"
+
+    # Resolve ONCE at startup, before waiting for any event.
+    #
+    # Measured 2026-10-28: rebooting while an override was active brought the
+    # device up with the fan still pinned at `performance`. fanctl persists
+    # its own mode and its service.sh re-applies it at boot, so the override
+    # survives a reboot even though the app that asked for it is long gone -
+    # and a purely event-driven daemon does not correct that until the user
+    # happens to switch apps. Boot and leave the device idle and it runs at
+    # the game's tier indefinitely.
+    #
+    # The foreground is not readable the instant the daemon starts - dumpsys
+    # reported no topResumedActivity for either display just after boot - so
+    # poll briefly for it. If it never arrives, resolving against an empty
+    # foreground is still correct and still safe: no package matches, so the
+    # recorded baseline is restored, which is the conservative state. Any
+    # later event corrects it.
+    # Two passes, and the order matters.
+    #
+    # Pass 1 runs IMMEDIATELY. With no readable foreground it restores the
+    # recorded baseline, which is the safe state. This is the pass that
+    # matters in practice: a device always boots to the keyguard, and while
+    # the keyguard is up dumpsys reports no topResumedActivity at all - so
+    # waiting for a foreground first meant paying the full timeout on EVERY
+    # boot. Measured before this change: the fan sat at the previous
+    # override's tier for 23 s after each reboot.
+    resolve_once
+
+    # Pass 2 catches the case where an app really is in front by the time the
+    # framework settles - booting already unlocked, or a quick unlock. Bounded,
+    # and free when it changes nothing because of the no-op guard.
+    _n=0
+    while [ "$_n" -lt 20 ]; do
+        if [ -n "$(read_foreground)" ]; then resolve_once; break; fi
+        _n=$((_n + 1)); sleep 1
+    done
+
+    logcat -b events -v threadtime -s wm_set_resumed_activity:I 2>/dev/null \
+    | while IFS= read -r _line; do
+        # Validate the line is a well-formed resume event, then discard its
+        # payload: it tells us when to look, not what to look at.
+        parse_resume_line "$_line" >/dev/null 2>&1 || continue
+        resolve_once
+    done
+}
+
+daemon_running() {
+    _pid=$(cat "$PIDFILE" 2>/dev/null) || return 1
+    case "$_pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ -d "/proc/$_pid" ] || return 1
+    # Confirm it is actually ours and not a recycled pid.
+    grep -qs appwatch "/proc/$_pid/cmdline" 2>/dev/null
+}
+
+# Any live `appwatch daemon`, pidfile or not. Two daemons both calling fanctl
+# is the two-writers-on-one-node problem, decided by timing - and it was
+# observed: two strays thrashed a profiled app between performance and the
+# baseline within 200 ms. The pattern is broken up so this does not match the
+# calling process's own command line.
+stray_daemons() {
+    # Anchored at END of the command line, and requiring the path separator,
+    # so this matches `sh /system/bin/appwatch daemon` but not an enclosing
+    # shell whose command line merely CONTAINS that text - e.g. an adb
+    # one-liner. That false positive was observed: a wrapper command quoting
+    # "appwatch daemon" inflated the count from 2 to 4, which is the same
+    # self-match trap as pkill -f, one level up.
+    # The pattern is broken up so this awk's own command line cannot match.
+    ps -eo pid,args 2>/dev/null | awk '/\/appwatc[h] daemon$/ {print $1}'
+}
+
+# kill_tree <pid>
+#   Children FIRST, then the parent. This ordering is the whole fix: the
+#   daemon's main process blocks waiting on its own `logcat | while` pipeline
+#   and does not act on SIGTERM while that pipeline is alive, so signalling
+#   only the parent left all three processes running while `stop` cheerfully
+#   reported success. Killing logcat collapses the pipeline, after which the
+#   parent exits on its own.
+#
+#   Always by pid, never by pattern: a `pkill -f appwatch` here would match
+#   this script's own command line and kill the caller.
+kill_tree() {
+    _target="$1"
+    _kids=$(ps -eo pid,ppid 2>/dev/null | awk -v p="$_target" '$2==p {print $1}')
+    for _k in $_kids; do kill -TERM "$_k" 2>/dev/null; done
+    kill -TERM "$_target" 2>/dev/null
+    _n=0
+    while [ "$_n" -lt 20 ]; do
+        [ -d "/proc/$_target" ] || return 0
+        _n=$((_n+1)); sleep 0.1
+    done
+    for _k in $_kids; do kill -KILL "$_k" 2>/dev/null; done
+    kill -KILL "$_target" 2>/dev/null
+    sleep 0.3
+    [ -d "/proc/$_target" ] && return 1
+    return 0
+}
+
+cmd_start() {
+    daemon_running && { say "already running ($(cat "$PIDFILE"))"; return 0; }
+    # Refuse rather than add a second writer.
+    _stray=$(stray_daemons | tr '\n' ' ')
+    [ -n "$(echo "$_stray" | tr -d ' ')" ] \
+      && { say "refusing to start: stray daemon(s) already running: $_stray"; return 1; }
+    mkdir -p "$STATE"
+    rm -f "$PIDFILE"
+    setsid "$0" daemon >/dev/null 2>&1 &
+    # The daemon writes its own pidfile: $! here can be setsid's pid rather
+    # than the loop's, depending on whether setsid forks.
+    _n=0
+    while [ "$_n" -lt 20 ]; do
+        daemon_running && break
+        _n=$((_n+1)); sleep 0.1
+    done
+    daemon_running || { say 'daemon did not come up'; return 1; }
+    say "started ($(cat "$PIDFILE"))"
+}
+
+cmd_stop() {
+    _rc=0
+    if daemon_running; then
+        _pid=$(cat "$PIDFILE")
+        if kill_tree "$_pid"; then say "stopped ($_pid)"
+        else say "FAILED to stop $_pid"; _rc=1
+        fi
+    fi
+    # Sweep any stray daemon whose pidfile was lost, for the same two-writers
+    # reason. Verified afterwards rather than assumed.
+    for _s in $(stray_daemons); do
+        kill_tree "$_s" || { say "FAILED to stop stray $_s"; _rc=1; }
+    done
+    _left=$(stray_daemons | tr '\n' ' ')
+    [ -n "$(echo "$_left" | tr -d ' ')" ] \
+      && { say "daemons still alive after stop: $_left"; _rc=1; }
+    rm -f "$PIDFILE"
+    # Restore even if the kill failed - a pinned fan is the worse outcome.
+    restore_baseline
+    return "$_rc"
+}
+
+cmd_status() {
+    printf 'daemon:    %s\n' "$(daemon_running && echo "running ($(cat "$PIDFILE"))" || echo 'not running')"
+    printf 'processes: %s\n' "$(stray_daemons | tr '\n' ' ' | sed 's/ $//')"
+    printf 'enabled:   %s\n' "$(is_enabled && echo yes || echo no)"
+    printf 'fanctl:    %s\n' "$([ -x "$FANCTL" ] && fanctl_mode || echo 'not installed')"
+    printf 'baseline:  %s\n' "$(baseline_fan || true)"
+    printf 'applied:   %s\n' "$(applied_fan || true)"
+    printf 'overrides: %s\n' "$([ -f "$TABLE" ] && awk '$2=="fan"' "$TABLE" | wc -l | tr -d ' ' || echo 0)"
+}
+
+cmd_enable()  { mkdir -p "$STATE"; echo 1 > "$ENABLED"; say 'enabled'; }
+# The master switch restores immediately rather than waiting for the next app
+# switch: a toggle that appears to do nothing reads as a bug.
+cmd_disable() { mkdir -p "$STATE"; echo 0 > "$ENABLED"; restore_baseline; say 'disabled'; }
+
+# Read-only on-device checks, in the shape of `fanctl selftest`. This is the
+# only shell whose opinion matters - the host suite runs under bash.
+cmd_selftest() {
+    _p=0; _f=0
+    _t() { if [ "$2" = "$3" ]; then _p=$((_p+1)); echo "  PASS $1"
+           else _f=$((_f+1)); echo "  FAIL $1 (want '$3', got '$2')"; fi; }
+    W='10-23 18:24:43.168  1909  2475 I wm_set_resumed_activity: [0,com.android.calculator2/.Calculator,resumeTopActivity - onActivityStateChanged]'
+    B='10-23 18:30:11.004  1909  2475 I wm_set_resumed_activity: [1,com.example.emu/.MainActivity,resumeTopActivity - onActivityStateChanged]'
+    _t 'parser, warm resume'  "$(parse_resume_line "$W")" '0 com.android.calculator2'
+    _t 'parser, display 1'    "$(parse_resume_line "$B")" '1 com.example.emu'
+    _t 'tier_rank default'    "$(tier_rank default)"      '0'
+    # Display #1 before #0 on purpose: dumpsys lists the focused display
+    # first, so position must not be trusted.
+    _fgfix='Display #1 (activities from top to bottom):
+    topResumedActivity=ActivityRecord{1 u0 com.android.deskclock/.DeskClock t262}
+Display #0 (activities from top to bottom):
+    topResumedActivity=ActivityRecord{2 u0 com.android.documentsui/.files.FilesActivity t261}'
+    _t 'foreground, display 0' "$(echo "$_fgfix" | parse_foreground | awk '$1==0{print $2}')" 'com.android.documentsui'
+    _t 'foreground, display 1' "$(echo "$_fgfix" | parse_foreground | awk '$1==1{print $2}')" 'com.android.deskclock'
+    _t 'max_tier'             "$(max_tier balanced performance)" 'performance'
+    _tmp="${TMPDIR:-/data/local/tmp}/appwatch.selftest.$$"
+    printf 'com.x.game\tfan\tperformance\ncom.x.emu\tfan\tbalanced\n' > "$_tmp"
+    _t 'table lookup'         "$(table_value "$_tmp" com.x.game fan)" 'performance'
+    _t 'bottom app raises'    "$(effective_fan_tier "$_tmp" quiet none com.x.emu)" 'balanced'
+    _t 'top not downgraded'   "$(effective_fan_tier "$_tmp" quiet com.x.game none)" 'performance'
+    if effective_fan_tier "$_tmp" default com.x.game '' >/dev/null 2>&1
+    then _f=$((_f+1)); echo '  FAIL refuses a default baseline'
+    else _p=$((_p+1)); echo '  PASS refuses a default baseline'
+    fi
+    rm -f "$_tmp"
+    _t 'fanctl present'       "$([ -x "$FANCTL" ] && echo yes || echo no)" 'yes'
+    printf '%s: %d passed, %d failed\n' "$TAG" "$_p" "$_f"
+    [ "$_f" -eq 0 ]
+}
+
+case "${1:-}" in
+    daemon)   daemon_loop ;;
+    start)    cmd_start ;;
+    stop)     cmd_stop ;;
+    status)   cmd_status ;;
+    enable)   cmd_enable ;;
+    disable)  cmd_disable ;;
+    selftest) cmd_selftest ;;
+    *) cat >&2 <<USAGE
+usage: appwatch {start|stop|status|enable|disable|selftest}
+       appwatch daemon            the watch loop itself (service.sh calls this)
+
+  start/stop   daemon lifecycle; stop restores the recorded baseline
+  enable       per-app profiles on
+  disable      per-app profiles off, restoring the baseline immediately
+  status       daemon, master switch, baseline, applied tier, override count
+  selftest     read-only checks under the device's own shell
+
+Table: $TABLE   one line per package per key, tab separated:
+    com.example.game<TAB>fan<TAB>performance
+Only the 'fan' key is implemented. Unknown keys and values are ignored.
+USAGE
+       exit 2 ;;
+esac

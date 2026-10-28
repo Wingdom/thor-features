@@ -1,0 +1,6 @@
+id=thor-appwatch
+name=Thor per-app profiles (appwatch)
+version=v0.1.0
+versionCode=1
+author=local
+description=Applies per-app settings when an app comes to the foreground and restores the baseline when it leaves. Only the fan key is implemented: a profiled app raises the fan tier above whatever thor-fanctl's baseline is, and max(baseline, top screen app, bottom screen app) wins so an app on either panel can drive the fan. Writes no hardware node itself - every change goes through fanctl, which keeps the step_wise governor in charge. The baseline is recorded at takeover and restored from that record, never recomputed from live state. Requires thor-fanctl. REVERT IS NOT OPTIONAL: the applied tier persists in fanctl's own state and is re-applied at boot, so run `appwatch disable` before disabling this module; uninstalling does it for you.

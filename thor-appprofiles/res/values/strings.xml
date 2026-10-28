@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fan profiles</string>
+    <string name="search_hint">Search apps</string>
+    <string name="master_label">Per-app profiles</string>
+    <string name="master_sub_on">Applied as you switch apps</string>
+    <string name="master_sub_off">Switched off; the baseline tier is used</string>
+    <string name="tier_default">Default</string>
+    <string name="pick_title">Fan tier</string>
+    <string name="loading">Loading apps…</string>
+    <string name="no_match">No apps match</string>
+
+    <string name="banner_no_root">Root required. This app asks the appwatch
+        command to do everything, and Magisk has not granted it access.</string>
+    <string name="banner_no_module">The thor-appwatch module is not installed,
+        or Magisk has staged it and is waiting for a reboot. Your saved
+        profiles are shown but nothing will be applied.</string>
+    <string name="banner_no_fanctl">The thor-fanctl module is missing, so there
+        is no fan control to drive. Profiles can be edited but will not take
+        effect.</string>
+    <string name="banner_no_baseline">No fan tier is selected globally, so
+        per-app profiles will not engage. Pick Quiet, Balanced or Performance
+        in the Fan tile first.</string>
+    <string name="save_failed">Could not save. The table was left unchanged.</string>
+    <string name="read_failed">Could not read the saved profiles, so nothing
+        will be overwritten. Fix root access and reopen.</string>
+</resources>

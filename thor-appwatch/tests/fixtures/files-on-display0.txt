@@ -1,0 +1,13 @@
+Display #0 (activities from top to bottom):
+  * Task{52dac38 #261 type=standard I=com.android.documentsui/.files.FilesActivity U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    fullscreenRequestAllowMode=NONE
+    isSleeping=false
+    topResumedActivity=ActivityRecord{151781531 u0 com.android.documentsui/.files.FilesActivity t261}
+Display #1 (activities from top to bottom):
+
+  * Task{611d2d7 #256 type=home U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    fullscreenRequestAllowMode=NONE
+    * Task{40ee6ad #257 type=home A=10178:rip.moth.cocoonshell nonResizable U=0 rootTaskId=256 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+      fullscreenRequestAllowMode=NONE
+      isSleeping=false
+      topResumedActivity=ActivityRecord{225063510 u0 rip.moth.cocoonshell/.ExternalDisplayActivity t257}
