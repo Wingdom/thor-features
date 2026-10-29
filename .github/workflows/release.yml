@@ -1,31 +1,34 @@
 name: release
 
-# Builds signed artifacts and attaches them to a GitHub Release.
+# One release per component, so each app has its own version stream and
+# Obtainium only offers an update when that app actually changed.
 #
-# Signing uses the real release key, injected from encrypted secrets:
+# Tag format:  thor-<component>-v<version>
+#   thor-fan-tile-v0.5.0   -> builds thor-fan-tile, releases its APK
+#   thor-stickfx-v0.1.4    -> builds thor-stickfx, releases its module zip
+#
+# The tag version must match the component's own declared version. A mismatch
+# fails the build rather than publishing an artifact whose filename and
+# metadata disagree with its tag -- which is exactly what Obtainium would then
+# compare against.
+#
+# Signing uses the real release key from encrypted secrets:
 #   THOR_KEYSTORE_B64   base64 of thor-release.jks
 #   THOR_KEYSTORE_PASS  its password
-#
-# The keystore itself is never in the repository -- it lives outside the working
-# tree so `git clean -xfd` cannot destroy it. Losing it means these apps can
-# never be updated again, only uninstalled and reinstalled.
 
 on:
   push:
-    tags: ['v*']
+    tags: ['thor-*-v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to build (must already exist)
+        description: 'Tag to build, e.g. thor-fan-tile-v0.5.0'
         required: true
 
 permissions:
-  contents: write        # needed to create the Release
+  contents: write
 
 env:
-  # The release certificate every APK must carry. If an APK does not match this,
-  # the build used the dev-key fallback and must not ship: Android would refuse
-  # to upgrade over it, and users would have to uninstall and lose their data.
   EXPECTED_CERT: 2101dfb8d131ba9dbf00ca67c1030f6ed3ef167909c71c45702c742d6a8e0875
 
 jobs:
@@ -36,7 +39,36 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
+      - name: Parse and validate the tag
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag: $TAG"
+          [[ "$TAG" =~ ^(thor-.+)-v(.+)$ ]] || {
+            echo "::error::tag must look like thor-<component>-v<version>"; exit 1; }
+          COMPONENT="${BASH_REMATCH[1]}"
+          VERSION="${BASH_REMATCH[2]}"
+          [ -d "$COMPONENT" ]            || { echo "::error::no such component: $COMPONENT"; exit 1; }
+          [ -f "$COMPONENT/build.sh" ]   || { echo "::error::$COMPONENT has no build.sh"; exit 1; }
+
+          # The tag must agree with what the component says about itself.
+          if [ -f "$COMPONENT/magisk/module.prop" ]; then
+            DECLARED=$(awk -F= '/^version=/{print $2}' "$COMPONENT/magisk/module.prop" | tr -d 'v')
+            KIND=module
+          else
+            DECLARED=$(awk -F= '/^VERSION=/{print $2}' "$COMPONENT/build.sh" | head -1)
+            KIND=app
+          fi
+          [ "$DECLARED" = "$VERSION" ] || {
+            echo "::error::tag says $VERSION but $COMPONENT declares $DECLARED"; exit 1; }
+
+          echo "COMPONENT=$COMPONENT" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION"     >> "$GITHUB_ENV"
+          echo "KIND=$KIND"           >> "$GITHUB_ENV"
+          echo "validated: $KIND $COMPONENT $VERSION"
+
       - name: Refuse to build unsigned
+        if: env.KIND == 'app'
         env:
           KS_B64: ${{ secrets.THOR_KEYSTORE_B64 }}
           KS_PASS: ${{ secrets.THOR_KEYSTORE_PASS }}
@@ -44,31 +76,31 @@ jobs:
           set -euo pipefail
           [ -n "$KS_B64" ]  || { echo "::error::secret THOR_KEYSTORE_B64 is not set"; exit 1; }
           [ -n "$KS_PASS" ] || { echo "::error::secret THOR_KEYSTORE_PASS is not set"; exit 1; }
-          echo "both signing secrets present"
 
       - name: Set up JDK
+        if: env.KIND == 'app'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Install Android SDK packages
+        if: env.KIND == 'app'
         run: |
           set -euo pipefail
           SDK="$HOME/android"
-          mkdir -p "$SDK/cmdline-tools"
-          cd "$SDK/cmdline-tools"
+          mkdir -p "$SDK/cmdline-tools" && cd "$SDK/cmdline-tools"
           curl -fsSL -o tools.zip \
             https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q tools.zip && mv cmdline-tools latest && rm tools.zip
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
             'build-tools;37.0.0' 'platforms;android-37.0'
+          test -x "$SDK/build-tools/37.0.0/aapt2"
           echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
 
-      # Written outside the workspace so it cannot be picked up by a build, and
-      # to a path that is removed in the always() cleanup step below.
       - name: Materialise the signing key
+        if: env.KIND == 'app'
         env:
           KS_B64: ${{ secrets.THOR_KEYSTORE_B64 }}
           KS_PASS: ${{ secrets.THOR_KEYSTORE_PASS }}
@@ -80,63 +112,42 @@ jobs:
           echo "THOR_KEYSTORE=$RUNNER_TEMP/signing/thor-release.jks" >> "$GITHUB_ENV"
           echo "THOR_KEYSTORE_PASS=$KS_PASS" >> "$GITHUB_ENV"
 
-      - name: Build everything
-        run: |
-          set -uo pipefail
-          fail=0
-          for d in thor-*/; do
-            d=${d%/}
-            [ -f "$d/build.sh" ] || continue
-            echo "::group::$d"
-            ( cd "$d" && ./build.sh ) || { echo "::error::$d failed"; fail=1; }
-            echo "::endgroup::"
-          done
-          exit $fail
+      - name: Build
+        run: cd "$COMPONENT" && ./build.sh
 
-      # The dev-key fallback in build.sh is silent by design, so this is the
-      # guard that stops a mis-signed release from shipping.
-      - name: Verify every APK carries the release certificate
+      # build.sh falls back to a dev key silently so forks can build, which
+      # makes a mis-signed release the failure mode worth guarding.
+      - name: Verify the APK
+        if: env.KIND == 'app'
         run: |
           set -euo pipefail
           BT="$ANDROID_SDK/build-tools/37.0.0"
-          n=0; bad=0
-          for apk in thor-*/dist/*.apk; do
-            [ -f "$apk" ] || continue
-            n=$((n+1))
-            fp=$("$BT/apksigner" verify --print-certs "$apk" 2>/dev/null \
-                 | grep -m1 -oE 'SHA-256 digest: [0-9a-f]+' | cut -d' ' -f3)
-            if [ "$fp" = "$EXPECTED_CERT" ]; then
-              echo "ok   $apk"
-            else
-              echo "::error::$apk signed with $fp, expected $EXPECTED_CERT"
-              bad=1
-            fi
-          done
-          [ "$n" -eq 5 ] || { echo "::error::expected 5 APKs, found $n"; bad=1; }
-          exit $bad
+          APK="$COMPONENT/dist/$COMPONENT-v$VERSION.apk"
+          [ -f "$APK" ] || { echo "::error::expected $APK"; exit 1; }
+          fp=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null \
+               | grep -m1 -oE 'SHA-256 digest: [0-9a-f]+' | cut -d' ' -f3)
+          [ "$fp" = "$EXPECTED_CERT" ] || {
+            echo "::error::$APK signed with $fp, expected the release key"; exit 1; }
+          # metadata must match the tag, or Obtainium compares the wrong thing
+          vn=$("$BT/aapt2" dump badging "$APK" | grep -m1 -oE "versionName='[^']*'" | cut -d"'" -f2)
+          [ "$vn" = "$VERSION" ] || {
+            echo "::error::$APK reports versionName $vn, tag says $VERSION"; exit 1; }
+          echo "ok: signed with the release key, versionName $vn"
 
-      - name: Collect artifacts
+      - name: Collect
         run: |
           set -euo pipefail
           mkdir -p release
-          cp thor-*/dist/*.zip thor-*/dist/*.apk release/
+          cp "$COMPONENT"/dist/*"$VERSION"* release/
           cd release && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
       - name: Create the Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ${{ env.COMPONENT }} v${{ env.VERSION }}
           files: release/*
           generate_release_notes: true
-          body: |
-            Magisk modules and Quick Settings APKs for the AYN Thor on LineageOS 24.
-
-            All five APKs are signed with the project release key
-            (`SHA-256 2101dfb8…`). **If you have an older build installed, signed
-            with the per-app dev keys, you must uninstall it first** — Android
-            refuses to upgrade across a signature change.
-
-            `SHA256SUMS` covers every attached file.
 
       - name: Shred the key
         if: always()

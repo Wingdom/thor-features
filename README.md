@@ -69,6 +69,30 @@ adb install -r thor-fan-tile.apk
 **4. Add the tiles.** Pull down Quick Settings, tap the edit (pencil) button,
 and drag in the tiles you installed.
 
+### Keeping the apps updated with Obtainium
+
+[Obtainium](https://github.com/ImranR98/Obtainium) can install the apps and
+notify you when a new version appears, so you don't have to check back here.
+
+Each app is released separately, with its own tag, so Obtainium only tells you
+about an app that actually changed. Add the app once per entry, using this
+repository's URL, and set Obtainium's release filter so it only sees that app's
+releases:
+
+| App | Release filter |
+|---|---|
+| Fan tile | `^thor-fan-tile-v` |
+| Joystick lighting tile | `^thor-stickfx-tile-v` |
+| Move-app tile | `^thor-screenmove-tile-v` |
+| AYN button panel | `^thor-screenpanel-v` |
+| Per-game fan profiles | `^thor-appprofiles-v` |
+
+Obtainium calls this a regular-expression filter on releases; the exact wording
+of the field varies a little between versions.
+
+The Magisk modules are not covered — Obtainium installs apps, and Magisk has no
+equivalent auto-update for sideloaded zips. Those stay manual.
+
 That's it. The AYN button panel appears when you press the AYN button, below the
 bottom screen.
 

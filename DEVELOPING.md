@@ -128,3 +128,45 @@ quote decompiled class and method names from proprietary AYN system APKs, so
 they are kept private, and the code here is written against documented
 behaviour rather than copied from them. Component READMEs therefore describe
 *what* each piece does and omit citations to that material.
+
+## Releasing
+
+One release per component, each with its own tag:
+
+```
+thor-<component>-v<version>
+
+thor-fan-tile-v0.5.0     builds thor-fan-tile, releases its APK
+thor-stickfx-v0.1.4      builds thor-stickfx, releases its module zip
+```
+
+`release.yml` parses the component out of the tag and **refuses to build if the
+tag version disagrees with what the component declares** — `VERSION` in an app's
+`build.sh`, or `version=` in a module's `module.prop`. Publishing an artifact
+whose filename and metadata contradict its tag is exactly what would confuse
+Obtainium, so it fails instead.
+
+Per-component tags rather than one combined release, so each app has its own
+version stream and Obtainium only offers an update when that app actually
+changed.
+
+### App versioning
+
+Each app's `build.sh` carries a single `VERSION`, and derives `versionCode` from
+it arithmetically (`0.5.0 -> 500`) so the two cannot drift. Both are passed to
+`aapt2 link`, and the version lands in the filename too.
+
+This matters more than it looks: before 2026-10-29 **no APK declared a version
+at all**. Android treats a missing `versionCode` as `0`, so every build was
+version 0 — it would not recognise a newer build as an upgrade, and Obtainium
+had nothing to compare. Anything that bumps a version must change `VERSION`
+only; `versionCode` follows.
+
+`versionCode` must only ever increase. Android refuses to install an APK whose
+code is lower than the installed one.
+
+### Components that cannot be released
+
+`thor-sdcard-fsck`, `thor-wifi-kiwi-fw` and `thor-wifi-no6g` have no `build.sh`,
+so a tag naming one of them is rejected. They are plain file overlays with no
+packaging step; installing them is manual.

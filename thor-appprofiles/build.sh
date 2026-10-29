@@ -10,6 +10,12 @@ AJ="$SDK/platforms/android-37.0/android.jar"   # Android 17, matching the device
 PKG_PATH=com/thorfeatures/appprofiles
 MIN_SDK=31             # the system_* dynamic colour palette
 TARGET_SDK=37          # Android 17. Play Protect blocks installs targeting
+
+# Version. versionCode must be an integer and must only ever increase, because
+# Android refuses to install an APK whose code is lower than the installed one.
+# Derived from the semver so the two can never drift: 0.5.0 -> 500.
+VERSION=0.5.0
+VERSION_CODE=$(echo "$VERSION" | awk -F. '{ printf "%d", $1*10000 + $2*100 + $3 }')
                        # older releases on this device.
 
 for t in "$BT/aapt2" "$BT/d8" "$BT/apksigner" "$BT/zipalign" "$AJ"; do
@@ -44,6 +50,7 @@ echo "== resources =="
     -I "$AJ" \
     --manifest AndroidManifest.xml \
     --min-sdk-version "$MIN_SDK" --target-sdk-version "$TARGET_SDK" \
+    --version-code "$VERSION_CODE" --version-name "$VERSION" \
     --java out/gen \
     out/res.zip || exit 1
 echo "  linked, R.java generated"
@@ -102,9 +109,9 @@ fi
 # --key-pass. Store and key passwords are identical in every path above, and
 # apksigner defaults the key password to the keystore password.
 "$BT/apksigner" sign --ks "$KS" --ks-pass "$KS_PASS" \
-    --ks-key-alias "$KS_ALIAS" --out out/thor-appprofiles.apk out/aligned.apk || exit 1
-"$BT/apksigner" verify out/thor-appprofiles.apk 2>/dev/null && echo "  signature verified"
+    --ks-key-alias "$KS_ALIAS" --out "out/thor-appprofiles-v$VERSION.apk" out/aligned.apk || exit 1
+"$BT/apksigner" verify "out/thor-appprofiles-v$VERSION.apk" 2>/dev/null && echo "  signature verified"
 
-mkdir -p dist && cp out/thor-appprofiles.apk dist/
+mkdir -p dist && rm -f dist/thor-appprofiles-v*.apk && cp "out/thor-appprofiles-v$VERSION.apk" dist/
 echo
-echo "  dist/thor-appprofiles.apk ($(du -h dist/thor-appprofiles.apk | cut -f1))"
+echo "  dist/thor-appprofiles-v$VERSION.apk ($(du -h "dist/thor-appprofiles-v$VERSION.apk" | cut -f1))"
