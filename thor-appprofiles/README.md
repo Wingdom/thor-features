@@ -95,7 +95,7 @@ rejecting semicolons, backticks, `$(...)`, quotes, spaces and path traversal.
 
 ```sh
 ./build.sh                                  # runs 60 host tests, then packages
-adb install -r dist/thor-appprofiles.apk
+adb install -r dist/thor-appprofiles-v*.apk
 ```
 
 Then grant it root the first time it asks. If you miss the prompt, Magisk

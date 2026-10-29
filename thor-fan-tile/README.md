@@ -103,7 +103,7 @@ a device.
 
 ```
 bash build.sh
-adb install -r dist/thor-fan-tile.apk
+adb install -r dist/thor-fan-tile-v*.apk
 ```
 
 Then add **Fan** from the Quick Settings edit screen.

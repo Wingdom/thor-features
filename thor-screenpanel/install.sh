@@ -9,8 +9,12 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$HERE"
 
-APK=dist/thor-screenpanel.apk
-[ -f "$APK" ] || { echo "no $APK - run ./build.sh first"; exit 1; }
+# Resolve the versioned APK rather than hardcoding a name. The filename carries
+# the version (thor-screenpanel-v0.5.0.apk), so a hardcoded one silently breaks
+# on every bump -- which is exactly what happened at 0.5.0.
+APK=$(ls -1 dist/thor-screenpanel-v*.apk 2>/dev/null | sort -V | tail -1)
+[ -n "$APK" ] && [ -f "$APK" ] || { echo "no dist/thor-screenpanel-v*.apk - run ./build.sh first"; exit 1; }
+echo "  apk: $APK"
 
 echo "== prerequisites =="
 for cmd in screenblank screenmove aynkeyd; do

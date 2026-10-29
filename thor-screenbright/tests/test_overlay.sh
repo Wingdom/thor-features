@@ -93,6 +93,22 @@ for f in magisk/customize.sh magisk/uninstall.sh; do
     check "$f is valid shell" "ok" "$(sh -n "$f" 2>/dev/null && echo ok || echo broken)"
 done
 
+# --- REGRESSION: the module must be upgradeable over itself ---------------------
+#
+# customize.sh used to check stock-ness before anything else. Once installed,
+# this overlay is bind-mounted over the vendor file, so that path *is* our own
+# overlay: it no longer contains <leadDisplayAddress>, and the guard aborted
+# with "Stock file has no <leadDisplayAddress>". The module could never be
+# upgraded -- found when bumping 0.1.0 -> 0.5.0 on a device that already had it.
+# The cmp branch has to come first.
+check "upgrade case is checked before the stock-ness guard" "ok" \
+      "$(awk '/cmp -s "\$STOCK" "\$OURS"/{c=NR} /Stock file has no/{g=NR}
+              END{print (c && g && c < g) ? "ok" : "broken"}' magisk/customize.sh)"
+
+check "customize.sh reports the in-place upgrade" "ok" \
+      "$(grep -q 'already installed: the live file is this overlay' magisk/customize.sh \
+         && echo ok || echo missing)"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

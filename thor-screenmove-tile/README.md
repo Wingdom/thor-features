@@ -119,7 +119,7 @@ anything on a device.
 
 ```
 build.sh
-adb install -r dist/thor-screenmove-tile.apk
+adb install -r dist/thor-screenmove-tile-v*.apk
 ```
 
 Then add **Screen move** from the Quick Settings edit screen.
