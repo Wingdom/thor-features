@@ -9,7 +9,7 @@ provide. It is a front end for `thor-stickfx`; see `thor-stickfx/README.md`.
 
 ## Requires
 
-- The **`thor-stickfx` Magisk module v0.1.3 or newer** (which installs
+- The **`thor-stickfx` Magisk module v0.5.0 or newer** (which installs
   `/system/bin/stickfx`) and root.
 - LineageOS's own **AynParts** RGB panel, for the colour picker the tile opens.
 

@@ -1,6 +1,6 @@
 id=thor-screenbright
 name=Thor independent screen brightness
-version=v0.1.0
-versionCode=1
+version=v0.5.0
+versionCode=500
 author=local
 description=Decouple the AYN Thor's two internal panels so each can have its own brightness. LineageOS declares the bottom panel a brightness follower of the main one in /vendor/etc/displayconfig/display_layout_configuration.xml, which makes `cmd display set-brightness --id 1` store a value the hardware never receives. This module overlays that file with the single <leadDisplayAddress> element removed and changes nothing else. Writes no hardware node. Disable the module and reboot to restore stock behaviour exactly.

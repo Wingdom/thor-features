@@ -1,6 +1,6 @@
 id=thor-fanctl
 name=Thor fan policy (fanctl)
-version=v0.2.0
-versionCode=2
+version=v0.5.0
+versionCode=500
 author=local
 description=Three fan tiers (quiet/balanced/performance) for the AYN Thor on LineageOS by adjusting thermal trip points, never by overriding pwm1. usb-therm's inherited 43C/45C trips (which command fan state 6-7, the level the SoC only reaches at 80C) are raised; the CPU/GPU ladder is left at stock in quiet mode. Every trip remains present, step_wise stays in charge, thermal protection is never removed. Disable or uninstall restores stock on the next boot.

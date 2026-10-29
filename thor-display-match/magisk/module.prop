@@ -1,6 +1,6 @@
 id=thor-display-match
 name=Thor Match AYN Display
-version=v0.2.1
-versionCode=4
+version=v0.5.0
+versionCode=500
 author=local
 description=Makes the AYN Thor's display behave like the stock AYN ROM did. Overlays /vendor/etc/display_settings.xml to add ignoreOrientationRequest for the PRIMARY display, which LineageOS configures only for the secondary screen -- so portrait-only apps can no longer rotate a landscape-only handheld. The XML is generated at install time from the ROM's own file plus the live display id, so the ROM's existing secondary-display entry is preserved. Rotation only -- display density is a separate concern and is not touched. This is a mitigation, not a fix: the underlying fault is that the accelerometer axes are not remapped to match SurfaceFlinger's 90-degree rotation, so sensor-driven rotation is still 90 degrees off. NOTE: disabling alone does not fully revert, because the framework persists the value into /data/system/display_settings.xml on first boot; run "display-match revert" and reboot.

@@ -137,7 +137,7 @@ One release per component, each with its own tag:
 thor-<component>-v<version>
 
 thor-fan-tile-v0.5.0     builds thor-fan-tile, releases its APK
-thor-stickfx-v0.1.4      builds thor-stickfx, releases its module zip
+thor-stickfx-v0.5.0      builds thor-stickfx, releases its module zip
 ```
 
 `release.yml` parses the component out of the tag and **refuses to build if the

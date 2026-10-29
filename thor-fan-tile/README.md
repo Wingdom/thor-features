@@ -3,7 +3,7 @@
 A Quick Settings tile for `fanctl`: tap to open a three-way picker and switch
 the fan tier without a terminal.
 
-Requires the **`thor-fanctl` Magisk module v0.2.0 or newer** (which installs
+Requires the **`thor-fanctl` Magisk module v0.5.0 or newer** (which installs
 `/system/bin/fanctl`) and root. The tile is only a front end — it holds no
 permissions of its own and shells out to the CLI under `su`, the same shape as
 `thor-screenmove-tile`.
