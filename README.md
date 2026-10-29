@@ -126,6 +126,32 @@ The Java tests need only a JDK and, for the tile components, an `android.jar`
 to compile against. Packaging an APK additionally needs `aapt2`, `d8`,
 `apksigner` and `zipalign` from the Android build-tools.
 
+## CI
+
+Two workflows in `.github/workflows/`, so releases do not depend on anyone's
+laptop.
+
+**`ci.yml`** — every push to `main` and every pull request. Installs JDK 21 plus
+`build-tools;37.0.0` and `platforms;android-37.0`, then runs every component's
+`build.sh`. It uses **no secrets**, so it works on forks: the APKs it builds are
+signed with the throwaway dev key `build.sh` generates on demand, and are
+deliberately not installable as upgrades over a release build. Each APK's
+certificate is printed, so which key was used is never ambiguous.
+
+**`release.yml`** — on a `v*` tag. Same build, signed with the project release
+key, attached to a GitHub Release with a `SHA256SUMS` over every file.
+
+The release workflow pins the expected signing certificate and fails if any APK
+does not carry it, and asserts that exactly five APKs were produced. The
+dev-key fallback is silent by design, which makes a mis-signed release the
+failure mode worth guarding; a component dropping out of the build is caught by
+the same check.
+
+Three components — `thor-sdcard-fsck`, `thor-wifi-kiwi-fw` and
+`thor-wifi-no6g` — have no `build.sh`. They are plain file overlays with no
+packaging step, so CI skips them and they produce no release artifact.
+Installing those is still manual.
+
 ## Conventions
 
 - Shell: `set -uo pipefail`, `</dev/null` on every `adb` call, and **explicit
