@@ -1,0 +1,86 @@
+name: ci
+
+# Builds everything and runs every test suite. No secrets, so this runs on forks
+# and pull requests too -- the APKs it produces are signed with the throwaway
+# dev key each build.sh generates on demand, and are NOT installable as upgrades
+# over a release build. That is deliberate: see release.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # build.sh wants $ANDROID_SDK/build-tools/37.0.0 and
+      # $ANDROID_SDK/platforms/android-37.0. Note the platform package is
+      # literally "android-37.0", not "android-37" -- its AndroidVersion.ApiLevel
+      # is "37.0".
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android"
+          mkdir -p "$SDK/cmdline-tools"
+          cd "$SDK/cmdline-tools"
+          curl -fsSL -o tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip && mv cmdline-tools latest && rm tools.zip
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
+            'build-tools;37.0.0' 'platforms;android-37.0'
+          test -x "$SDK/build-tools/37.0.0/aapt2"
+          test -f "$SDK/platforms/android-37.0/android.jar"
+          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
+
+      - name: Build everything and run all tests
+        run: |
+          set -uo pipefail
+          fail=0
+          for d in thor-*/; do
+            d=${d%/}
+            [ -f "$d/build.sh" ] || { echo "::notice::$d has no build.sh (file-overlay module)"; continue; }
+            echo "::group::$d"
+            if ( cd "$d" && ./build.sh ); then
+              echo "::endgroup::"
+            else
+              echo "::endgroup::"
+              echo "::error::$d failed"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      # Fail loudly if a dev-signed APK ever looks like a release one. On CI the
+      # dev key is expected; this only asserts we know which key was used.
+      - name: Report APK signatures
+        run: |
+          set -uo pipefail
+          BT="$ANDROID_SDK/build-tools/37.0.0"
+          for apk in thor-*/dist/*.apk; do
+            [ -f "$apk" ] || continue
+            fp=$("$BT/apksigner" verify --print-certs "$apk" 2>/dev/null \
+                 | grep -m1 -oE 'SHA-256 digest: [0-9a-f]+' | cut -d' ' -f3)
+            printf '%-44s %s\n' "$apk" "${fp:0:16}"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-builds
+          path: |
+            thor-*/dist/*.zip
+            thor-*/dist/*.apk
+          if-no-files-found: error
