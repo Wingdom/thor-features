@@ -98,10 +98,28 @@ bottom screen.
 
 ### If something doesn't work
 
-- **A tile does nothing.** Its module probably isn't installed, or Magisk is
-  still waiting for a reboot.
-- **An app won't install.** If you had an older version, uninstall it first —
-  the signing key changed and Android won't upgrade across that.
+- **A tile says "root required".** Open the Magisk app, go to **Superuser**, and
+  turn the app on. Then tap the tile again.
+
+  This is the most likely thing to go wrong, and it is worth knowing why. A tile
+  asks for root as soon as Quick Settings opens, so it can show you its current
+  setting. Magisk's permission prompt cannot appear over the open Quick Settings
+  panel, so it gets rejected instead — and once that has happened a few times,
+  tapping reports "root required". Granting it in Magisk fixes it for good.
+
+  If the app isn't listed under Superuser yet, tap the tile once first so it
+  makes a request, then look again.
+
+- **A tile does nothing at all.** Its module isn't installed, or Magisk has
+  staged it and is waiting for a reboot.
+- **An app won't install.** If you have an older version, uninstall it first.
+  Android refuses to upgrade an app whose signing key changed.
+- **A tile vanished after reinstalling its app.** It hasn't — Android re-adds it
+  at the end of your Quick Settings, so look on the later pages before adding it
+  again.
+- **Root stops working after reinstalling an app.** Reinstalling gives the app a
+  new internal ID, so its Magisk permission doesn't carry over. Grant it again
+  under Superuser.
 - **The AYN panel doesn't appear.** It needs four modules present; its own
   installer will tell you which one is missing.
 

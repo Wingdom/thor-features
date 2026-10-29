@@ -170,3 +170,30 @@ code is lower than the installed one.
 `thor-sdcard-fsck`, `thor-wifi-kiwi-fw` and `thor-wifi-no6g` have no `build.sh`,
 so a tag naming one of them is rejected. They are plain file overlays with no
 packaging step; installing them is manual.
+
+## Known defect: tiles request root at the wrong moment
+
+All three tiles call their CLI from `onStartListening()`, so they ask for root
+**as soon as Quick Settings opens**, in order to render the current setting as
+their label.
+
+Magisk's permission prompt cannot take focus over the open Quick Settings
+panel, so that request is rejected rather than prompted — `su: request rejected
+(<uid>)` in logcat. After a few shade opens the tile reports "root required",
+and the user never saw a prompt at all.
+
+It works whenever the *first* request happens to come from a tap instead, which
+is a foreground action the prompt can appear over. So whether a new install
+works is down to whether the user taps the tile before opening the shade with
+it visible. That coin flip is the defect.
+
+Confirmed on hardware 2026-10-29 after reinstalling the apps with the new
+signing key: reinstalling assigns a new UID, the old Magisk policy no longer
+applies, and the tiles went to "root required" with four rejections logged and
+no prompt shown. Granting the UIDs directly in `magisk --sqlite` fixed it
+immediately.
+
+**The fix is to stop requesting root during `onStartListening`** — render from
+cached state and make the first su request happen only on tap. Not yet done; it
+touches all three tiles and needs its own testing pass. The README documents the
+Magisk → Superuser workaround in the meantime.
