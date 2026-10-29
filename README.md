@@ -5,7 +5,7 @@ Stock AYN features, rebuilt for **LineageOS 24** on the **AYN Thor**.
 The Thor's own ROM has fan control, joystick lighting, a dual-screen panel and a
 programmable AYN button. LineageOS has none of them. This brings them back.
 
-<!-- SCREENSHOT: docs/img/panel.png — the AYN button panel, bottom screen -->
+![The AYN button panel on the bottom screen](docs/img/panel.png)
 
 ---
 
@@ -25,8 +25,14 @@ prefer, except where noted.
 | **Move an app to the other screen** — one tap sends whatever you're using across. | `thor-screenmove` | `thor-screenmove-tile` |
 | **Per-game fan profiles** — pick a fan setting per game; it switches when you launch. | `thor-appwatch` | `thor-appprofiles` |
 
-<!-- SCREENSHOT: docs/img/tiles.png — the three Quick Settings tiles -->
-<!-- SCREENSHOT: docs/img/appprofiles.png — the per-game fan profiles app -->
+Quick Settings tiles show the current setting at a glance, and tapping one opens
+a picker:
+
+![Quick Settings tiles for the stick LEDs and the fan](docs/img/tiles.png)
+
+Per-game fan profiles switch automatically as you move between games:
+
+![The per-game fan profiles app](docs/img/appprofiles.png)
 
 ### The things that just fix something
 
