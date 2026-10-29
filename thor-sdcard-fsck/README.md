@@ -7,8 +7,12 @@ with a full genuine filesystem check, exactly as on AYN stock.
 
 Magisk and root. Nothing else — no APK, no other module, no CLI of its own.
 
-The module ships a prebuilt `fsck.exfat` (`exfatprogs` 1.1.1, arm64). It is
-GPL-2.0 software and was taken from AYN's stock OTA rather than built here; see
+The module ships `fsck.exfat` (`exfatprogs` 1.1.1, arm64), **built from
+upstream source** by `build-fsck.sh` — it fetches the 1.1.1 release, verifies
+its sha256, and cross-compiles with the NDK. Earlier versions shipped AYN's
+binary from the stock OTA; it was replaced on 2026-10-29 so the GPL-2.0 source
+obligation could actually be met. Measured a dead heat with AYN's build on the
+461 GB card (8.9 s vs 9.0 s, cold cache). See
 [`../THIRD-PARTY.md`](../THIRD-PARTY.md) for its provenance and the upstream
 source, and build `1.1.1` from upstream yourself if you want a clean
 provenance chain.

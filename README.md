@@ -168,10 +168,13 @@ behaviour rather than copied from them. Component READMEs therefore describe
 
 ## Licence
 
-**None chosen yet.** Until a licence is added, all rights are reserved and this
-is published for reference rather than reuse. See the last section of
-[`THIRD-PARTY.md`](THIRD-PARTY.md) — the GPL-2.0 binary is a live constraint on
-that choice.
+**Apache-2.0** — see [`LICENSE`](LICENSE).
+
+Chosen to match LineageOS, which this project extends and from which several
+files derive. Five third-party files keep their own terms and are itemised in
+[`THIRD-PARTY.md`](THIRD-PARTY.md): one Qualcomm firmware blob, one GPL-2.0
+binary built here from upstream source, and three Apache-2.0 files from
+LineageOS.
 
 ## Status
 

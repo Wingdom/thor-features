@@ -1,7 +1,7 @@
 # Third-party files
 
-This repository is mostly original shell, Java and Magisk packaging. Five
-files come from elsewhere, and their terms are not ours to set. They are listed
+This repository is mostly original shell, Java and Magisk packaging, under
+Apache-2.0. Five files come from elsewhere, and their terms are not ours to set. They are listed
 here so anyone redistributing this work knows exactly what they are handling.
 
 ## 1. `thor-wifi-kiwi-fw/system/vendor/firmware/kiwi/amss20.bin`
@@ -25,22 +25,44 @@ themselves; the module works unchanged either way.
 | | |
 |---|---|
 | **What** | `exfatprogs` 1.1.1, `fsck.exfat`, arm64 |
-| **Size** | 40 KB (36 952 bytes as shipped by AYN) |
+| **Size / sha256** | 34 888 bytes — `50e7e79ba518ba596acb53259fbaa38137101969fbdddc6f0d8a5832af92e02f` |
 | **Licence** | **GPL-2.0** — `exfatprogs` is free software |
-| **Upstream source** | <https://github.com/exfatprogs/exfatprogs>, tag `1.1.1` |
-| **Origin** | Extracted from the AYN Thor stock OTA (`Thor_V1.0.0.293_20251121`), `system` partition, `/system/bin/fsck.exfat` |
+| **Upstream source** | <https://github.com/exfatprogs/exfatprogs>, release `1.1.1` — tarball sha256 `2a1574110e0d9ba11524744cac39454fb4084277cfa8ae53406a066600b825c8` |
+| **Origin** | **Built here** from that tarball by `thor-sdcard-fsck/build-fsck.sh`, cross-compiled with NDK r26 clang for `aarch64-linux-android24` |
 
-**Corresponding source.** `exfatprogs` is GPL-2.0, so a binary distribution
-carries an obligation to make the matching source available. The upstream
-`1.1.1` tag above is that source. This repository does not and cannot warrant
-that AYN's build is byte-reproducible from it — the binary was taken from a
-vendor image, not built here, and AYN may have applied changes. Anyone who
-wants a binary with a clean provenance chain should build `1.1.1` from upstream
-for arm64 and drop it in; see `thor-sdcard-fsck/README.md`.
+**Corresponding source.** `exfatprogs` is GPL-2.0, so distributing this binary
+carries an obligation to make the matching source available. The release above
+*is* that source, and `build-fsck.sh` is the exact recipe: it fetches that
+tarball, checks its sha256, and builds. Anyone can reproduce an equivalent
+binary with one command.
 
-The reason the stock binary is used at all is purely that 1.1.1 checks a
-461 GB / 158k-entry card in 17 s where LineageOS's 1.4.3 needs 58 s, and
-`vold` kills `fsck.exfat` at a hardcoded 45 s.
+The binary is **not bit-for-bit reproducible** — the NDK embeds a build id — so
+rebuilding yields a working equivalent, not the same sha256. That is a property
+of the toolchain, not a gap in the source offer.
+
+Earlier versions of this module shipped **AYN's** binary, lifted from the stock
+OTA (`Thor_V1.0.0.293_20251121`, 36 952 bytes, sha256
+`97c42e882c40b03d0d696ac03973213ad78ecf874a4d301531e61367a2e2ddf3`). That was
+replaced on 2026-10-29 because the source obligation could not honestly be met
+for it: it was not built here, and AYN publishes no source. Another party's
+non-compliance does not transfer rights — GPL compliance is per-distributor — so
+the only clean fix was to build it ourselves.
+
+**Verified equivalent** on the Thor's 461 GB / 161 073-file card, cold cache,
+read-only (`-n`):
+
+| | run 1 | run 2 |
+|---|---|---|
+| AYN's binary | 9.22 s | 8.79 s |
+| this build | 8.91 s | 8.88 s |
+
+Identical reports (`clean. directories 11574, files 161073`), both
+`exfatprogs version : 1.1.1`. Verified end to end: with this binary in place at
+`/system/bin/fsck.exfat` (context `u:object_r:fsck_exec:s0`), `vold` unmounted
+and remounted the card successfully, with no SELinux denials.
+
+The reason 1.1.1 is used at all is purely that it checks this card inside
+`vold`'s hardcoded 45 s `SIGTERM`, where LineageOS's 1.4.3 does not.
 
 ## 3. `thor-display-match/tests/fixtures/vendor-display_settings.xml`
 
@@ -78,14 +100,18 @@ file rather than original work, which is why it is listed here.
 
 ## This repository's own terms
 
-**No licence has been chosen yet.** Until one is added, all rights are reserved
-and the code here is published for reference rather than reuse. The two
-binaries above keep their own terms regardless of what licence is eventually
-chosen for the original work — and the GPL-2.0 file above is a live constraint
-on that choice.
+**Apache-2.0.** See [`LICENSE`](LICENSE). Chosen to match LineageOS, which this
+project extends and from which entries 3-5 derive, so the whole tree is one
+licence except the GPL-2.0 binary in §2 — which is a separate executable
+invoked as a subprocess, i.e. mere aggregation, and constrains nothing here.
 
-The project also builds on LineageOS, which is Apache-2.0, and targets a device
-whose stock software is proprietary. Nothing extracted from AYN's stock ROM is
-published here beyond the one binary in §2: the reference APKs, the decompiled
-classes and the stock images used during research are deliberately kept out of
-this repository.
+GPL-2.0 was the one option actually ruled out, and not by §2: entry 5 is a
+modified LineageOS Apache-2.0 file, and Apache-2.0 is incompatible with GPLv2
+because of its patent clause. Apache-2.0 code can be taken into GPLv3; it cannot
+go into GPLv2.
+
+The project builds on LineageOS, which is Apache-2.0, and targets a device whose
+stock software is proprietary. Nothing extracted from AYN's stock ROM is
+published here: the reference APKs, the decompiled classes and the stock images
+used during research are deliberately kept outside this repository, and §2 is
+now built from upstream source rather than taken from AYN.
