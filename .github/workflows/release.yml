@@ -84,6 +84,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # The cmdline-tools build number is load-bearing -- see the longer note in
+      # ci.yml. `platforms;android-37.0` is only in Google's repository2-3.xml,
+      # which older cmdline-tools cannot read.
       - name: Install Android SDK packages
         if: env.KIND == 'app'
         run: |
@@ -91,7 +94,7 @@ jobs:
           SDK="$HOME/android"
           mkdir -p "$SDK/cmdline-tools" && cd "$SDK/cmdline-tools"
           curl -fsSL -o tools.zip \
-            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
           unzip -q tools.zip && mv cmdline-tools latest && rm tools.zip
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \

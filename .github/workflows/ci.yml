@@ -30,6 +30,14 @@ jobs:
       # $ANDROID_SDK/platforms/android-37.0. Note the platform package is
       # literally "android-37.0", not "android-37" -- its AndroidVersion.ApiLevel
       # is "37.0".
+      #
+      # The cmdline-tools build number is load-bearing: `platforms;android-37.0`
+      # is published only in Google's repository2-3.xml manifest, and older
+      # cmdline-tools read repository2-1/2-2 and simply cannot see it. The
+      # previous pin (11076708) resolved `build-tools;37.0.0`, which IS in every
+      # manifest, and then failed on the platform -- so the symptom looks like a
+      # bad package name rather than a stale tool. Do not downgrade this without
+      # checking the package is still visible to it.
       - name: Install Android SDK packages
         run: |
           set -euo pipefail
@@ -37,7 +45,7 @@ jobs:
           mkdir -p "$SDK/cmdline-tools"
           cd "$SDK/cmdline-tools"
           curl -fsSL -o tools.zip \
-            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
           unzip -q tools.zip && mv cmdline-tools latest && rm tools.zip
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
