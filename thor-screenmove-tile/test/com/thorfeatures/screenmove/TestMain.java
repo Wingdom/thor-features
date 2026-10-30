@@ -25,6 +25,7 @@ public final class TestMain {
         toggleSource();
         tileState();
         tileLabels();
+        idleRendering();
         clientArgv();
         clientFallbacks();
 
@@ -154,6 +155,44 @@ public final class TestMain {
                 TileRender.state(false, ScreenStatus.parse(IDLE)) == TileRender.UNAVAILABLE
              || TileRender.state(true,  ScreenStatus.parse(IDLE)) == TileRender.UNAVAILABLE
              || TileRender.state(true,  ScreenStatus.parse(BOTH)) == TileRender.UNAVAILABLE);
+    }
+
+    /**
+     * What the tile shows when the shade opens, before any su request.
+     *
+     * The defect this guards: onStartListening() used to call screenmove, so
+     * the shade opening fired an su request. Magisk's prompt cannot take focus
+     * over the open shade, so it was rejected rather than prompted and the
+     * tile reported "Root required" having asked the user nothing. Confirmed
+     * on device 2026-10-29 across all three thor tiles.
+     */
+    private static void idleRendering() {
+        System.out.println("TileRender idle rendering -- the shade must not ask for root");
+
+        no("idle is never UNAVAILABLE -- that withholds onClick, which is now "
+                + "the only place root is requested",
+                TileRender.idleState() == TileRender.UNAVAILABLE);
+        eq("idle -> INACTIVE (clickable)", TileRender.INACTIVE, TileRender.idleState());
+
+        // The idle subtitle must not claim a direction. Which way a tap moves
+        // an app depends on live display state this tile cannot read without
+        // root, so naming one would be wrong as often as right.
+        String idle = TileRender.idleLabel();
+        yes("idle subtitle is non-empty", idle != null && !idle.trim().isEmpty());
+        no("idle subtitle names no direction",
+                idle.contains("top") || idle.contains("bottom")
+             || idle.contains("Top") || idle.contains("Bottom"));
+        no("idle subtitle does not claim root is missing",
+                idle.equals(TileRender.label(false, null)));
+        no("idle subtitle does not claim there is no second screen",
+                idle.equals(TileRender.label(true, ScreenStatus.unknown())));
+
+        // It must also differ from every post-tap label, or the tile would
+        // look like it had read the device when it had not.
+        no("idle subtitle differs from every label the CLI can produce",
+                idle.equals(TileRender.label(true, ScreenStatus.parse(BOTH)))
+             || idle.equals(TileRender.label(true, ScreenStatus.parse(IDLE)))
+             || idle.equals(TileRender.label(true, ScreenStatus.parse(NO_SECOND))));
     }
 
     private static void tileLabels() {

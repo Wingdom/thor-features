@@ -13,7 +13,8 @@ permissions of its own and shells out to the CLI under `su`, the same shape as
 | file | role |
 |---|---|
 | `FanMode` | the three tiers, their CLI words and labels. Pure logic. |
-| `TileRender` | which Quick Settings state to show. Pure logic. |
+| `TileRender` | which Quick Settings state to show, and what to cache. Pure logic. |
+| `ModeStore` | the last tier seen under root, so the shade needs no `su`. |
 | `FanctlClient` | builds the `su -c` argv and parses `fanctl` output. Runner is injectable. |
 | `FanTileService` | the `TileService` itself — Android plumbing only. |
 
@@ -34,12 +35,45 @@ is installed but no tier has been chosen yet.
 
 ## What the tile shows
 
-| situation | state |
-|---|---|
-| module missing / root denied | `INACTIVE` |
-| installed, no tier chosen | `INACTIVE` |
-| a tier applied | `ACTIVE` |
-| change in flight | `UNAVAILABLE` |
+| situation | state | label |
+|---|---|---|
+| never granted root | `INACTIVE` | `Fan: tap to set up` |
+| module missing / root denied | `INACTIVE` | `Fan: no root` |
+| installed, no tier chosen | `INACTIVE` | `Fan: Stock` |
+| a tier applied | `ACTIVE` | `Fan: Quiet` etc. |
+| change in flight | `UNAVAILABLE` | `Fan: Quiet` etc. |
+
+## When it asks for root
+
+**Only on tap.** Opening Quick Settings never requests `su`.
+
+Quick Settings calls `onStartListening()` every time the shade opens, and
+until v0.5.1 the tile read `fanctl get` from there so it could label itself.
+That spawned a `su` process on every shade open — and wrote a rejection line to
+logcat every time, on a device where the app had not been granted root.
+
+So the shade is drawn from `ModeStore`, a `SharedPreferences` copy of the last
+tier the tile saw, and the only `su` happens in `onClick()`. A refused tap
+clears that copy rather than leaving a label claiming a tier that is no longer
+applied.
+
+**This does not make a permission prompt appear, and nothing can.** Magisk 31
+removed the interactive su request; access is granted ahead of time in the
+Magisk app's Superuser tab, with the **+** button. An app with no policy row
+does not appear in that tab and nothing will add it for you. Verified on device
+2026-10-30 on Magisk 31.1: with the policy row deleted, a tap produced
+`su: request rejected` in the same millisecond, with no prompt. Earlier notes
+in this repo assumed a tap could raise a prompt; that was true on Magisk 30.7
+and is not true now.
+
+The cost is a label that can lag. The AYN panel drives the same
+`/system/bin/fanctl`, so changing the tier there leaves this tile's label
+behind until it is next tapped, and a tap corrects it. One stale label for one
+shade open is a much smaller defect than a tile that cannot obtain root at all.
+
+`tests/test_tile_root_timing.sh`, one level up, fails the build if
+`onStartListening()` can reach the CLI client again — directly or through a
+helper. All three tiles share it.
 
 ## Why it is never `STATE_UNAVAILABLE` at rest
 
@@ -54,6 +88,12 @@ unavailable tile produced no `su` request at all. So every resting state is
 `STATE_UNAVAILABLE` is reserved for the transient "applying" moment, where
 being unclickable is the point. `TileRender.state()` is host-tested, including
 an assertion that it never returns `UNAVAILABLE` for a resting tile.
+
+The same rule now covers the cache: `TileRender.cachedState()` must not return
+`UNAVAILABLE` for a tile that has never been granted root either. If it did,
+the tile would receive no `onClick()` — and `onClick()` is now the *only* place
+root is requested, so root would be permanently unobtainable. That assertion is
+in the host tests.
 
 ## Version compatibility
 

@@ -124,6 +124,57 @@ public class TestMain {
         eq(TileRender.state(true, true), TileRender.ACTIVE, "root + mode applied -> ACTIVE");
         eq(TileRender.state(true, false), TileRender.INACTIVE, "root + no mode -> INACTIVE");
         eq(TileRender.busy(), TileRender.UNAVAILABLE, "the transient applying state is UNAVAILABLE");
+
+        System.out.println("\nTileRender cached rendering -- the shade must not ask for root");
+        // The defect this guards: onStartListening() used to call stickfx, so
+        // the shade opening fired an su request. Magisk's prompt cannot take
+        // focus over the open shade, so it was rejected rather than prompted
+        // and the tile reported "no root" having asked the user nothing.
+        // Confirmed on device 2026-10-29 against this exact package (uid
+        // 10182, four rejections logged). Shade-open rendering now comes from
+        // the cache, and null means "never observed a mode under root".
+        check(TileRender.cachedState(null) != TileRender.UNAVAILABLE,
+                "a fresh install is never UNAVAILABLE",
+                "got UNAVAILABLE -- that withholds onClick, which is now the only "
+                + "place root is requested, so root would be unobtainable forever");
+        eq(TileRender.cachedState(null), TileRender.INACTIVE, "no cache -> INACTIVE (clickable)");
+        eq(TileRender.cachedState(StickMode.CHARGE), TileRender.ACTIVE, "cached charge -> ACTIVE");
+        eq(TileRender.cachedState(StickMode.BREATHE), TileRender.ACTIVE, "cached breathe -> ACTIVE");
+        eq(TileRender.cachedState(StickMode.OFF), TileRender.INACTIVE,
+                "cached 'off' -> INACTIVE (no effect running)");
+
+        check(TileRender.needsSetup(null), "no cache -> invite a tap", "");
+        check(!TileRender.needsSetup(StickMode.BREATHE), "cached mode -> name the mode", "");
+        check(!TileRender.needsSetup(StickMode.OFF),
+                "cached 'off' names itself rather than inviting setup",
+                "'off' is a mode stickfx reported, not an absent cache");
+
+        // Every mode must be renderable straight from the cache, or a mode
+        // could be stored and then not be drawable. USB included: it is not in
+        // the picker but the CLI can report it.
+        boolean allCacheable = true; String uncacheable = "";
+        for (StickMode m : StickMode.values()) {
+            if (TileRender.needsSetup(m)) { allCacheable = false; uncacheable = m.name(); }
+            if (TileRender.cachedState(m) == TileRender.UNAVAILABLE) {
+                allCacheable = false; uncacheable = m.name();
+            }
+        }
+        check(allCacheable, "every mode renders from the cache without UNAVAILABLE", uncacheable);
+
+        System.out.println("\nTileRender.cacheAfterProbe");
+        eq(TileRender.cacheAfterProbe(true, StickMode.BREATHE), StickMode.BREATHE,
+                "a granted probe caches what stickfx reported");
+        eq(TileRender.cacheAfterProbe(true, StickMode.OFF), StickMode.OFF,
+                "a granted probe caches 'off' too");
+        check(TileRender.cacheAfterProbe(false, StickMode.CHARGE) == null,
+                "a refused probe forgets the cache",
+                "keeping it would leave the tile claiming an effect after the module "
+                + "was removed or Superuser access revoked");
+        // And the forgotten cache must round-trip back to the invite, not to a
+        // dimmed tile -- otherwise revoking access would brick the tile.
+        eq(TileRender.cachedState(TileRender.cacheAfterProbe(false, StickMode.CHARGE)),
+                TileRender.INACTIVE,
+                "after a refusal the tile is still clickable");
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");
         if (fail > 0) System.exit(1);

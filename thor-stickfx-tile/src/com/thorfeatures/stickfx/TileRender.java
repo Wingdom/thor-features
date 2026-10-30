@@ -14,6 +14,18 @@ package com.thorfeatures.stickfx;
  *
  * STATE_UNAVAILABLE is still right for the brief moment while a change is
  * being applied, which is transient and deliberately not clickable.
+ *
+ * The second rule here is about *when* root is asked for, and was found the
+ * same way. The tile used to call stickfx from onStartListening() to render
+ * its label, which means it asked for root every time the Quick Settings shade
+ * opened. Magisk's prompt cannot take focus over the open shade, so those
+ * requests were rejected rather than prompted -- the tile reported "no root"
+ * having never asked the user anything. Confirmed on device 2026-10-29 against
+ * this package: four rejections in logcat, no prompt shown, no policy row.
+ *
+ * So shade-open rendering goes through cachedState() and names no su call at
+ * all. The first su request happens on tap, which is a foreground action the
+ * prompt can appear over.
  */
 public final class TileRender {
 
@@ -30,6 +42,43 @@ public final class TileRender {
     public static int state(boolean available, boolean modeActive) {
         if (!available) return INACTIVE;      // clickable, so the dialog is reachable
         return modeActive ? ACTIVE : INACTIVE;
+    }
+
+    /**
+     * The state to show when the shade opens, before any su request.
+     *
+     * @param cached the last mode observed under root, or null when this tile
+     *               has never observed one -- a fresh install, or a cache
+     *               cleared by a refused probe
+     */
+    public static int cachedState(StickMode cached) {
+        // Never UNAVAILABLE. A fresh install has no cache, and an unavailable
+        // tile receives no onClick() -- which is the only place root can now
+        // be requested, so that would make root permanently unobtainable.
+        if (cached == null) return INACTIVE;
+        return cached.isActive() ? ACTIVE : INACTIVE;
+    }
+
+    /**
+     * True when the tile has no cached mode and must invite a tap rather than
+     * name a mode it does not know.
+     */
+    public static boolean needsSetup(StickMode cached) { return cached == null; }
+
+    /**
+     * What to cache after a tap-driven probe.
+     *
+     * Forgetting on failure is the point. A cache that kept its last value
+     * would go on claiming an effect was running after the Magisk module was
+     * removed or Superuser access revoked, and the tile would look switched on
+     * while the LEDs sat under AynParts' control.
+     *
+     * @param available the probe got a clean exit from stickfx
+     * @param reported  what stickfx said, meaningful only when available
+     * @return the mode to store, or null to forget
+     */
+    public static StickMode cacheAfterProbe(boolean available, StickMode reported) {
+        return available ? reported : null;
     }
 
     /** True only for the transient "applying" state. */

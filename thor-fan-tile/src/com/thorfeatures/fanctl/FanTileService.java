@@ -25,6 +25,11 @@ import android.service.quicksettings.TileService;
  *  - The dialog is shown with TileService.showDialog(). The obvious
  *    alternative, startActivityAndCollapse(Intent), throws
  *    UnsupportedOperationException on Android 14+, and this device is 17.
+ *
+ * A third constraint governs *when* root is asked for, and is the reason
+ * onStartListening() renders from ModeStore rather than from fanctl: Magisk's
+ * prompt cannot take focus over the open Quick Settings shade, so a request
+ * made there is rejected, not prompted. See ModeStore and TileRender.
  */
 public class FanTileService extends TileService {
 
@@ -34,7 +39,7 @@ public class FanTileService extends TileService {
     @Override
     public void onStartListening() {
         super.onStartListening();
-        refreshAsync();
+        renderCachedAsync();
     }
 
     @Override
@@ -44,9 +49,20 @@ public class FanTileService extends TileService {
             @Override public void run() {
                 final boolean ok = client.available();
                 final FanMode current = ok ? client.getMode() : FanMode.STOCK;
+                // This is the only place root is requested, so it is also the
+                // only place that learns the truth. Record it either way: a
+                // refusal clears the cache rather than leaving a label that
+                // claims a tier is still applied.
+                ModeStore.save(FanTileService.this, TileRender.cacheAfterProbe(ok, current));
                 main.post(new Runnable() {
                     @Override public void run() {
-                        if (ok) showPicker(current); else showNoRoot();
+                        if (ok) {
+                            render(current, true);
+                            showPicker(current);
+                        } else {
+                            render(FanMode.STOCK, false);
+                            showNoRoot();
+                        }
                     }
                 });
             }
@@ -92,6 +108,7 @@ public class FanTileService extends TileService {
                 // Re-read instead of trusting the write, so the tile reflects
                 // what fanctl actually reports.
                 final FanMode actual = client.getMode();
+                ModeStore.save(FanTileService.this, actual);
                 main.post(new Runnable() {
                     @Override public void run() { render(actual, true); }
                 });
@@ -99,16 +116,39 @@ public class FanTileService extends TileService {
         }, "fanctl-apply").start();
     }
 
-    private void refreshAsync() {
+    /**
+     * Render from the cache. Deliberately names no FanctlClient call.
+     *
+     * Quick Settings calls onStartListening() every time the shade opens. A su
+     * request made from there is rejected rather than prompted, because
+     * Magisk's prompt cannot take focus over the open shade -- so this path
+     * must stay root-free, and the first su request must come from onClick().
+     *
+     * The read still happens off the main thread: the first SharedPreferences
+     * access is disk I/O, and the tile already renders a frame late today.
+     */
+    private void renderCachedAsync() {
         new Thread(new Runnable() {
             @Override public void run() {
-                final boolean ok = client.available();
-                final FanMode mode = ok ? client.getMode() : FanMode.STOCK;
+                final FanMode cached = ModeStore.load(FanTileService.this);
                 main.post(new Runnable() {
-                    @Override public void run() { render(mode, ok); }
+                    @Override public void run() { renderCached(cached); }
                 });
             }
-        }, "fanctl-refresh").start();
+        }, "fanctl-cache").start();
+    }
+
+    /** @param cached the last mode observed under root, or null if never. */
+    private void renderCached(FanMode cached) {
+        Tile tile = getQsTile();
+        if (tile == null) return;
+        int st = TileRender.cachedState(cached);
+        tile.setState(st == TileRender.ACTIVE ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
+        tile.setLabel(TileRender.needsSetup(cached)
+                ? getString(R.string.tile_setup)
+                : getString(R.string.tile_label_fmt, cached.label()));
+        tile.setIcon(Icon.createWithResource(this, R.drawable.ic_fan));
+        tile.updateTile();
     }
 
     private void render(FanMode mode, boolean available) {

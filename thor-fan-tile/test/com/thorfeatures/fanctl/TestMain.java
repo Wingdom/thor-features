@@ -148,6 +148,55 @@ public class TestMain {
         eq(TileRender.state(true, true), TileRender.ACTIVE, "root + mode applied -> ACTIVE");
         eq(TileRender.state(true, false), TileRender.INACTIVE, "root + no mode -> INACTIVE");
         eq(TileRender.busy(), TileRender.UNAVAILABLE, "the transient applying state is UNAVAILABLE");
+
+        System.out.println("\nTileRender cached rendering -- the shade must not ask for root");
+        // The defect this guards: onStartListening() used to call fanctl, so
+        // the shade opening fired an su request. Magisk's prompt cannot take
+        // focus over the open shade, so it was rejected rather than prompted
+        // and the tile reported "no root" having asked the user nothing.
+        // Confirmed on device 2026-10-29. Shade-open rendering now comes from
+        // the cache, and null means "never observed a mode under root".
+        check(TileRender.cachedState(null) != TileRender.UNAVAILABLE,
+                "a fresh install is never UNAVAILABLE",
+                "got UNAVAILABLE -- that withholds onClick, which is now the only "
+                + "place root is requested, so root would be unobtainable forever");
+        eq(TileRender.cachedState(null), TileRender.INACTIVE, "no cache -> INACTIVE (clickable)");
+        eq(TileRender.cachedState(FanMode.QUIET), TileRender.ACTIVE, "cached tier -> ACTIVE");
+        eq(TileRender.cachedState(FanMode.BALANCED), TileRender.ACTIVE, "cached balanced -> ACTIVE");
+        eq(TileRender.cachedState(FanMode.STOCK), TileRender.INACTIVE,
+                "cached 'default' -> INACTIVE (no tier applied)");
+
+        check(TileRender.needsSetup(null), "no cache -> invite a tap", "");
+        check(!TileRender.needsSetup(FanMode.QUIET), "cached mode -> name the mode", "");
+        check(!TileRender.needsSetup(FanMode.STOCK),
+                "cached 'default' names itself rather than inviting setup",
+                "'default' is a mode fanctl reported, not an absent cache");
+
+        // Every tier must be renderable straight from the cache, or a mode
+        // could be stored and then not be drawable.
+        boolean allCacheable = true; String uncacheable = "";
+        for (FanMode m : FanMode.values()) {
+            if (TileRender.needsSetup(m)) { allCacheable = false; uncacheable = m.name(); }
+            if (TileRender.cachedState(m) == TileRender.UNAVAILABLE) {
+                allCacheable = false; uncacheable = m.name();
+            }
+        }
+        check(allCacheable, "every mode renders from the cache without UNAVAILABLE", uncacheable);
+
+        System.out.println("\nTileRender.cacheAfterProbe");
+        eq(TileRender.cacheAfterProbe(true, FanMode.PERFORMANCE), FanMode.PERFORMANCE,
+                "a granted probe caches what fanctl reported");
+        eq(TileRender.cacheAfterProbe(true, FanMode.STOCK), FanMode.STOCK,
+                "a granted probe caches 'default' too");
+        check(TileRender.cacheAfterProbe(false, FanMode.QUIET) == null,
+                "a refused probe forgets the cache",
+                "keeping it would leave the tile claiming a tier after the module "
+                + "was removed or Superuser access revoked");
+        // And the forgotten cache must round-trip back to the invite, not to a
+        // dimmed tile -- otherwise revoking access would brick the tile.
+        eq(TileRender.cachedState(TileRender.cacheAfterProbe(false, FanMode.QUIET)),
+                TileRender.INACTIVE,
+                "after a refusal the tile is still clickable");
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");
         if (fail > 0) System.exit(1);

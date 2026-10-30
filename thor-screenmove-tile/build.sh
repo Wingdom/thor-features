@@ -14,7 +14,7 @@ TARGET_SDK=37          # Android 17. Play Protect blocks installs targeting
 # Version. versionCode must be an integer and must only ever increase, because
 # Android refuses to install an APK whose code is lower than the installed one.
 # Derived from the semver so the two can never drift: 0.5.0 -> 500.
-VERSION=0.5.0
+VERSION=0.5.1
 VERSION_CODE=$(echo "$VERSION" | awk -F. '{ printf "%d", $1*10000 + $2*100 + $3 }')
                        # older releases on this device.
 
@@ -24,6 +24,14 @@ done
 
 rm -rf out; mkdir -p out/res out/classes out/dex
 
+# Cross-tile invariant, shared by all three tiles: onStartListening() must not
+# be able to reach the CLI client. A su request made while the shade is opening
+# is rejected rather than prompted, because Magisk cannot take focus over the
+# open shade. Lives one level up because all three tiles must agree.
+echo "== tile root timing (shared) =="
+../tests/test_tile_root_timing.sh || { echo "build aborted: tile root timing"; exit 1; }
+
+echo
 echo "== unit tests (host, no device) =="
 mkdir -p out/test
 PKG_PATH=com/thorfeatures/screenmove

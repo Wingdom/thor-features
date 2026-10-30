@@ -63,8 +63,41 @@ Android regardless. It is opened with root `am start`, verified on device.
 - the `thor-stickfx` Magisk module (provides `/system/bin/stickfx`);
 - Superuser granted to `com.thorfeatures.stickfx`.
 
-Without root the tile shows "Sticks: no root" and explains what is missing
-rather than failing silently.
+Before it has ever been granted root the tile reads **"Sticks: tap to set up"**,
+because it will not ask for root until you tap it. If a tap is then refused it
+shows "Sticks: no root" and explains what is missing rather than failing
+silently.
+
+## When it asks for root
+
+**Only on tap.** Opening Quick Settings never requests `su`.
+
+Quick Settings calls `onStartListening()` every time the shade opens, and until
+v0.5.1 the tile read `stickfx get` from there so it could label itself. That
+spawned a `su` process on every shade open — and wrote a rejection line to
+logcat every time, on a device where the app had not been granted root.
+
+So the shade is drawn from `ModeStore`, a `SharedPreferences` copy of the last
+mode the tile saw, and the only `su` happens in `onClick()`. A refused tap
+clears that copy rather than leaving a label claiming an effect that is no
+longer running.
+
+**This does not make a permission prompt appear, and nothing can.** Magisk 31
+removed the interactive su request; access is granted ahead of time in the
+Magisk app's Superuser tab, with the **+** button. An app with no policy row
+does not appear in that tab and nothing will add it for you. Verified on device
+2026-10-30 against this package (uid 10182) on Magisk 31.1: with the policy row
+deleted, a tap produced `su: request rejected` in the same millisecond and no
+prompt. Earlier notes in this repo assumed a tap could raise a prompt; that was
+true on Magisk 30.7 and is not true now.
+
+The cost is a label that can lag. The AYN panel drives the same
+`/system/bin/stickfx`, so changing the effect there leaves this tile's label
+behind until it is next tapped, and a tap corrects it.
+
+`tests/test_tile_root_timing.sh`, one level up, fails the build if
+`onStartListening()` can reach the CLI client again — directly or through a
+helper. All three tiles share it.
 
 ## Build target
 
@@ -134,6 +167,11 @@ immediately.
 Fixed by rendering `STATE_INACTIVE` with the "no root" label instead. The
 decision now lives in `TileRender.state()`, which is pure and host-tested, with
 an explicit assertion that no-root never maps to UNAVAILABLE.
+
+`TileRender.cachedState()` carries the same rule for a tile that has never been
+granted root. It matters more there: `onClick()` is now the only place root is
+requested, so a fresh tile rendered `UNAVAILABLE` would never receive a tap and
+root would be permanently unobtainable.
 `STATE_UNAVAILABLE` is still used for the transient "applying" moment, where
 being unclickable is correct.
 

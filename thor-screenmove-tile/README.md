@@ -29,6 +29,7 @@ block, never keys or sentinels — so no tile change was needed for it.
 
 | situation | state | subtitle |
 |---|---|---|
+| shade just opened, before any tap | `INACTIVE` | Switch screens |
 | module missing / root denied | `INACTIVE` | Root required |
 | no second display found | `INACTIVE` | No second screen |
 | only launchers on both screens | `INACTIVE` | Nothing to move |
@@ -37,6 +38,34 @@ block, never keys or sentinels — so no tile change was needed for it.
 
 The subtitle names the **action the tap will take**, not the current state,
 because the tile has exactly one verb.
+
+## When it asks for root
+
+**Only on tap.** Opening Quick Settings never requests `su`.
+
+Quick Settings calls `onStartListening()` every time the shade opens, and until
+v0.5.1 the tile ran `screenmove status` from there so it could name a direction.
+That spawned a `su` process on every shade open — and wrote a rejection line to
+logcat every time, on a device where the app had not been granted root.
+
+**This does not make a permission prompt appear, and nothing can.** Magisk 31
+removed the interactive su request; access is granted ahead of time in the
+Magisk app's Superuser tab, with the **+** button. Verified on device
+2026-10-30 on Magisk 31.1. Earlier notes in this repo assumed a tap could raise
+a prompt; that was true on Magisk 30.7 and is not true now.
+
+Unlike `thor-fan-tile` and `thor-stickfx-tile`, this tile has nothing worth
+caching. Its subtitle names a *direction*, and which direction a tap moves an
+app depends on which display is focused and what each one is showing right now.
+A remembered "Send to bottom" would be wrong as often as right, and wrong in a
+way that names a specific action. So before a tap it shows **"Switch screens"** —
+the verb, with no direction claimed — and the tap reads the real state under
+the root it can actually obtain. The rows above for Root required, No second
+screen, Nothing to move and the live directions are all **post-tap** subtitles.
+
+`tests/test_tile_root_timing.sh`, one level up, fails the build if
+`onStartListening()` can reach the CLI client again — directly or through a
+helper. All three tiles share it.
 
 **"Nothing to move" is the normal resting state on a dual-screen launcher.**
 CocoonFE draws a launcher surface on *both* panels, so at idle neither screen

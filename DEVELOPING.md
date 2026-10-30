@@ -51,9 +51,14 @@ root, no emulator.
 cd thor-fanctl && ./build.sh
 ```
 
-As of this release: **596 host assertions, all passing** — 349 in shell test
-scripts and 247 in Java (`thor-appprofiles` 60, `thor-screenpanel` 46,
-`thor-screenmove-tile` 52, `thor-stickfx-tile` 46, `thor-fan-tile` 43).
+Measured 2026-10-29: **890 host assertions across 24 suites, all passing** —
+561 in shell test scripts and 329 in Java (`thor-screenpanel` 95,
+`thor-appprofiles` 60, `thor-stickfx-tile` 59, `thor-screenmove-tile` 59,
+`thor-fan-tile` 56).
+
+Counted by running each suite, not by addition: `tests/test_tile_root_timing.sh`
+is shared, so all three tile builds run it and a naive sum triple-counts its 6
+assertions.
 
 Two components additionally run checks **on the device itself**, because the
 host suite runs under bash while the modules run under Android's mksh:
@@ -171,29 +176,119 @@ code is lower than the installed one.
 so a tag naming one of them is rejected. They are plain file overlays with no
 packaging step; installing them is manual.
 
-## Known defect: tiles request root at the wrong moment
+## Magisk 31 removed the su prompt — and what that cost us
 
-All three tiles call their CLI from `onStartListening()`, so they ask for root
-**as soon as Quick Settings opens**, in order to render the current setting as
-their label.
+### What we believed, and why it was wrong
 
-Magisk's permission prompt cannot take focus over the open Quick Settings
-panel, so that request is rejected rather than prompted — `su: request rejected
-(<uid>)` in logcat. After a few shade opens the tile reports "root required",
-and the user never saw a prompt at all.
+Up to v0.5.0 all three tiles called their CLI from `onStartListening()`, so
+they asked for root **as soon as Quick Settings opened**. Requests came back
+`su: request rejected (<uid>)` and the user never saw a prompt.
 
-It works whenever the *first* request happens to come from a tap instead, which
-is a foreground action the prompt can appear over. So whether a new install
-works is down to whether the user taps the tile before opening the shade with
-it visible. That coin flip is the defect.
+The diagnosis written up on 2026-10-29 was that Magisk's prompt cannot take
+focus over the open Quick Settings panel, so a request made from there is
+rejected rather than prompted, and that moving the first request to `onClick`
+— a foreground action — would let the prompt appear.
 
-Confirmed on hardware 2026-10-29 after reinstalling the apps with the new
-signing key: reinstalling assigns a new UID, the old Magisk policy no longer
-applies, and the tiles went to "root required" with four rejections logged and
-no prompt shown. Granting the UIDs directly in `magisk --sqlite` fixed it
-immediately.
+**That was wrong, and the hardware test is what proved it.** Verified
+2026-10-30 on LineageOS 24 / Android 17, Magisk **31.1**: with the policy rows
+for uids 10168 / 10179 / 10182 deleted, tapping a tile produced
+`su: request rejected (10182)` *instantly* — same millisecond as the tap — and
+no prompt. Moving the request to a tap changed nothing, because the problem was
+never *when* the request was made.
 
-**The fix is to stop requesting root during `onStartListening`** — render from
-cached state and make the first su request happen only on tap. Not yet done; it
-touches all three tiles and needs its own testing pass. The README documents the
-Magisk → Superuser workaround in the meantime.
+### What is actually happening
+
+**Magisk 31.0 removed the interactive su request entirely** and changed the
+default policy from Query to Deny. Superuser access is now granted *ahead of
+time* from the Superuser tab in the Magisk app. The stated reason is that
+intercepting a root call in the daemon and launching a blocking UI prompt is
+fundamentally incompatible with HSUM, particularly for non-app uids like
+`adb shell`.
+
+See `topjohnwu/Magisk` PR #10139, "Remove interactive su request".
+
+This project's notes recorded Magisk **30.7**, which still prompted. The device
+was updated to 31.1 somewhere between the install that worked and the one that
+did not — so the apparent regression was a Magisk behaviour change, not a tile
+defect, and no amount of code could have brought the prompt back.
+
+### The Superuser tab lists the policy table, nothing more
+
+Confirmed by screenshot 2026-10-30. With rows present for 2000, 10145, 10180
+and 10183, the tab showed exactly Shell, Fan profiles, Solid Explorer and Thor
+Screen Panel — and nothing for the three tiles whose rows had been deleted.
+
+An app with no policy row simply **does not appear**, and since nothing prompts
+any more, there is no event that would create one. The way in is the **"+"
+button** at the bottom right of the Superuser tab, which adds an app ahead of
+time. That is the supported path on 31.x, not a workaround.
+
+This also explains the original 2026-10-29 symptom completely: the signing-key
+change forced a reinstall, a reinstall assigns a new uid, the new uid had no
+policy row, and on Magisk 31 nothing ever asks for one.
+
+### What we changed anyway, and why it still earns its place
+
+`onStartListening()` no longer touches the CLI in any of the three tiles. That
+is worth keeping on its own merits, independent of the prompt story:
+
+- it stops **three `su` process spawns every time the shade opens**, which is
+  the "process spawns on a phone are not free" lesson applied to a path that
+  runs many times a day;
+- when root is not granted it stops writing three rejection lines to logcat per
+  shade open;
+- the tile renders immediately instead of after a `su` round trip.
+
+`thor-fan-tile` and `thor-stickfx-tile` render the shade from `ModeStore`, a
+`SharedPreferences` copy of the last mode the tile observed under root. Before
+any grant they show "tap to set up" in `STATE_INACTIVE`; `STATE_UNAVAILABLE`
+would be fatal here, because an unavailable tile receives no `onClick()` and
+`onClick()` is the only place root is requested.
+
+A refused probe **clears** the cache rather than leaving a label claiming a
+mode that is no longer applied. That path was exercised on hardware during the
+2026-10-30 test: the refused tap left an empty prefs file rather than a stale
+mode.
+
+`thor-screenmove-tile` caches nothing. Its subtitle names a *direction*, which
+depends on which display is focused and what each is showing right now, so a
+remembered direction would be wrong as often as right — and wrong in a way that
+names a specific action. It shows the verb, "Switch screens", until tapped.
+
+The cost is a label that can lag: the AYN panel drives the same `fanctl` and
+`stickfx` binaries, so a change made there leaves a tile's label behind until
+the tile is next tapped, which re-reads under root and corrects it.
+
+### The lesson
+
+The 2026-10-29 diagnosis was confident, internally consistent, and fitted every
+piece of evidence then available — rejections in logcat, no policy rows, and a
+user who remembered the prompt working on first install. It was still wrong,
+because it never checked the Magisk version against what Magisk currently does.
+
+**When a tool's behaviour changes under you, no amount of reasoning about your
+own code will find it.** The brief said to verify on hardware by revoking the
+policy rather than by reasoning about it, and that instruction is the only
+reason this was caught before shipping a fix for the wrong problem.
+
+### The guard
+
+`tests/test_tile_root_timing.sh` — the first component-spanning test in the
+repo, hence the new top-level `tests/` directory — fails the build if
+`onStartListening()` can reach the CLI client in any of the three tiles. All
+three `build.sh` scripts run it before their own unit tests.
+
+It checks **reachability, not a literal string**: it strips comments, collects
+each method body, and follows calls between them, because the likeliest
+regression is `onStartListening()` calling a helper that calls the client
+rather than calling it directly. Both shapes were reintroduced deliberately and
+both failed the build. It also asserts the mirror image — that `onClick()`
+*does* reach the client — since a tile that never asks for root at all would
+otherwise satisfy it.
+
+Two bugs in that script, both found by it passing when it should not have:
+annotations may share the declaration line (`thor-screenmove-tile` writes
+`@Override public void onClick() {` on one line, and a pattern anchored on the
+modifier collected no body at all, which reads as clean); and an anonymous
+`Runnable`'s `run()` is not a new method — every tile does its CLI work inside
+one, so treating it as a separate method breaks the reachability trail.

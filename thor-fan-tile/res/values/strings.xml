@@ -4,8 +4,12 @@
     <string name="tile_name">Fan mode</string>
     <string name="tile_label_fmt">Fan: %1$s</string>
     <string name="tile_unavailable">Fan: no root</string>
+    <!-- Before the tile has ever read fanctl under root. It cannot name a mode
+         yet, because asking for one as the shade opens is the request Magisk
+         rejects rather than prompts. -->
+    <string name="tile_setup">Fan: tap to set up</string>
     <string name="picker_title">Fan mode</string>
     <string name="no_root_title">Root required</string>
-    <string name="no_root_body">The thor-fanctl Magisk module must be installed and this app granted Superuser access.\n\nFor stock LineageOS fan behaviour, disable the module instead of choosing a mode here.</string>
+    <string name="no_root_body">The thor-fanctl Magisk module must be installed, and this app added in Magisk → Superuser.\n\nMagisk 31 no longer asks when an app requests root, so no prompt will appear. Add “Thor Fan” with the + button in the Superuser tab, then tap this tile again.\n\nFor stock LineageOS fan behaviour, disable the module instead of choosing a mode here.</string>
     <string name="ok">OK</string>
 </resources>

@@ -28,6 +28,11 @@ import android.service.quicksettings.TileService;
  *  - shell calls never run on the main thread (`su` can block for seconds);
  *  - dialogs go through TileService.showDialog(), since
  *    startActivityAndCollapse(Intent) throws on Android 14+ and this is 17.
+ *
+ * A third constraint governs *when* root is asked for, and is the reason
+ * onStartListening() renders from ModeStore rather than from stickfx: Magisk's
+ * prompt cannot take focus over the open Quick Settings shade, so a request
+ * made there is rejected, not prompted. See ModeStore and TileRender.
  */
 public class StickTileService extends TileService {
 
@@ -37,7 +42,7 @@ public class StickTileService extends TileService {
     @Override
     public void onStartListening() {
         super.onStartListening();
-        refreshAsync();
+        renderCachedAsync();
     }
 
     @Override
@@ -47,9 +52,20 @@ public class StickTileService extends TileService {
             @Override public void run() {
                 final boolean ok = client.available();
                 final StickMode current = ok ? client.getMode() : StickMode.OFF;
+                // This is the only place root is requested, so it is also the
+                // only place that learns the truth. Record it either way: a
+                // refusal clears the cache rather than leaving a label that
+                // claims an effect is still running.
+                ModeStore.save(StickTileService.this, TileRender.cacheAfterProbe(ok, current));
                 main.post(new Runnable() {
                     @Override public void run() {
-                        if (ok) showPicker(current); else showNoRoot();
+                        if (ok) {
+                            render(current, true);
+                            showPicker(current);
+                        } else {
+                            render(StickMode.OFF, false);
+                            showNoRoot();
+                        }
                     }
                 });
             }
@@ -107,6 +123,7 @@ public class StickTileService extends TileService {
                 // Re-read instead of trusting the write, so the tile reflects
                 // what stickfx actually reports.
                 final StickMode actual = client.getMode();
+                ModeStore.save(StickTileService.this, actual);
                 main.post(new Runnable() {
                     @Override public void run() { render(actual, true); }
                 });
@@ -114,16 +131,39 @@ public class StickTileService extends TileService {
         }, "stickfx-apply").start();
     }
 
-    private void refreshAsync() {
+    /**
+     * Render from the cache. Deliberately names no StickfxClient call.
+     *
+     * Quick Settings calls onStartListening() every time the shade opens. A su
+     * request made from there is rejected rather than prompted, because
+     * Magisk's prompt cannot take focus over the open shade -- so this path
+     * must stay root-free, and the first su request must come from onClick().
+     *
+     * The read still happens off the main thread: the first SharedPreferences
+     * access is disk I/O, and the tile already renders a frame late today.
+     */
+    private void renderCachedAsync() {
         new Thread(new Runnable() {
             @Override public void run() {
-                final boolean ok = client.available();
-                final StickMode mode = ok ? client.getMode() : StickMode.OFF;
+                final StickMode cached = ModeStore.load(StickTileService.this);
                 main.post(new Runnable() {
-                    @Override public void run() { render(mode, ok); }
+                    @Override public void run() { renderCached(cached); }
                 });
             }
-        }, "stickfx-refresh").start();
+        }, "stickfx-cache").start();
+    }
+
+    /** @param cached the last mode observed under root, or null if never. */
+    private void renderCached(StickMode cached) {
+        Tile tile = getQsTile();
+        if (tile == null) return;
+        int st = TileRender.cachedState(cached);
+        tile.setState(st == TileRender.ACTIVE ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
+        tile.setLabel(TileRender.needsSetup(cached)
+                ? getString(R.string.tile_setup)
+                : getString(R.string.tile_label_fmt, cached.label()));
+        tile.setIcon(Icon.createWithResource(this, R.drawable.ic_stick));
+        tile.updateTile();
     }
 
     private void render(StickMode mode, boolean available) {

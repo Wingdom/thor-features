@@ -15,6 +15,13 @@ import android.service.quicksettings.TileService;
  * host-tested. This class is the thin Android shell: it runs the CLI off the
  * main thread, maps the pure result onto a Tile, and shows a dialog when it
  * cannot act.
+ *
+ * One constraint governs *when* root is asked for. onStartListening() must not
+ * touch the CLI: Magisk's prompt cannot take focus over the open Quick
+ * Settings shade, so a request made there is rejected rather than prompted and
+ * the user never sees a dialog. The shade gets a static subtitle from
+ * TileRender.idleLabel() and the first su request comes from onClick(), which
+ * is a foreground action the prompt can appear over.
  */
 public class ScreenmoveTileService extends TileService {
 
@@ -28,20 +35,26 @@ public class ScreenmoveTileService extends TileService {
 
     @Override public void onStartListening() {
         super.onStartListening();
-        refresh();
+        renderIdle();
     }
 
-    /** Read status off the main thread, then render. */
-    private void refresh() {
-        new Thread(new Runnable() {
-            @Override public void run() {
-                final ScreenStatus st = client.status();
-                final boolean avail = st.displaysKnown();
-                main.post(new Runnable() {
-                    @Override public void run() { render(avail, st); }
-                });
-            }
-        }).start();
+    /**
+     * Render without asking for root. Deliberately names no ScreenmoveClient
+     * call: this runs every time the shade opens, and an su request from here
+     * is rejected rather than prompted.
+     *
+     * There is nothing to read and nothing to cache -- the subtitle names the
+     * verb, not a direction, because the direction depends on live display
+     * state. So this is synchronous and does no I/O at all.
+     */
+    private void renderIdle() {
+        Tile tile = getQsTile();
+        if (tile == null) return;
+        tile.setState(mapState(TileRender.idleState()));
+        tile.setLabel(getString(R.string.tile_name));
+        tile.setSubtitle(TileRender.idleLabel());
+        tile.setIcon(Icon.createWithResource(this, R.drawable.ic_screenmove));
+        tile.updateTile();
     }
 
     private void render(boolean available, ScreenStatus st) {
@@ -75,13 +88,21 @@ public class ScreenmoveTileService extends TileService {
                     // ignored -- which is only possible because the tile
                     // renders STATE_INACTIVE rather than STATE_UNAVAILABLE.
                     main.post(new Runnable() {
-                        @Override public void run() { explain(before); }
+                        @Override public void run() {
+                            // Show the reason on the tile too, not just in the
+                            // dialog -- the dialog is dismissed, the tile stays.
+                            render(false, before);
+                            explain(before);
+                        }
                     });
                     return;
                 }
                 if (!before.anythingMovable()) {
                     main.post(new Runnable() {
-                        @Override public void run() { explain(before); }
+                        @Override public void run() {
+                            render(true, before);
+                            explain(before);
+                        }
                     });
                     return;
                 }

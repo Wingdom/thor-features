@@ -66,8 +66,32 @@ pick a `.zip`, repeat for each one you want, then **reboot**.
 adb install -r thor-fan-tile.apk
 ```
 
-**4. Add the tiles.** Pull down Quick Settings, tap the edit (pencil) button,
+**4. Give each app root.** This step is easy to miss, and nothing will work
+without it.
+
+**Magisk 31 never asks for permission.** Older versions popped up a prompt the
+first time an app wanted root. Magisk 31 removed that, so you grant access up
+front instead — and an app you haven't added does not appear in the Superuser
+list at all.
+
+In the Magisk app: *Superuser* tab → **+** button (bottom right) → pick the
+app. Do that for each one you installed:
+
+| You installed | Add this in Superuser |
+|---|---|
+| Fan tile | Thor Fan |
+| Joystick lighting tile | Thor Sticks |
+| Move-app tile | Thor screen move |
+| AYN button panel | Thor Screen Panel |
+| Per-game fan profiles | Fan profiles |
+
+Each one should show a switch turned on when you're done.
+
+**5. Add the tiles.** Pull down Quick Settings, tap the edit (pencil) button,
 and drag in the tiles you installed.
+
+A fresh tile reads **"tap to set up"** until you tap it once — that's it
+reading the current setting for the first time.
 
 ### Keeping the apps updated with Obtainium
 
@@ -98,17 +122,20 @@ bottom screen.
 
 ### If something doesn't work
 
-- **A tile says "root required".** Open the Magisk app, go to **Superuser**, and
-  turn the app on. Then tap the tile again.
+- **A tile says it needs root.** You missed step 4. Magisk app → *Superuser* →
+  **+** → add the app, then tap the tile again. Magisk 31 never prompts, so
+  nothing will remind you.
 
-  This is the most likely thing to go wrong, and it is worth knowing why. A tile
-  asks for root as soon as Quick Settings opens, so it can show you its current
-  setting. Magisk's permission prompt cannot appear over the open Quick Settings
-  panel, so it gets rejected instead — and once that has happened a few times,
-  tapping reports "root required". Granting it in Magisk fixes it for good.
+  Don't go looking for the app in that list first — an app you haven't added
+  isn't in it.
 
-  If the app isn't listed under Superuser yet, tap the tile once first so it
-  makes a request, then look again.
+- **A tile names the wrong setting.** Tap it — it re-reads the device and
+  corrects itself.
+
+  Between taps a tile shows the last setting it saw, so that it does not have to
+  ask for root just to draw a label. If you changed the fan or the stick LEDs
+  from the AYN panel instead of from the tile, the tile's label lags behind
+  until you next tap it.
 
 - **A tile does nothing at all.** Its module isn't installed, or Magisk has
   staged it and is waiting for a reboot.
@@ -118,8 +145,10 @@ bottom screen.
   at the end of your Quick Settings, so look on the later pages before adding it
   again.
 - **Root stops working after reinstalling an app.** Reinstalling gives the app a
-  new internal ID, so its Magisk permission doesn't carry over. Grant it again
-  under Superuser.
+  new internal ID, so its Magisk permission doesn't carry over — and the app
+  disappears from the Superuser list. Add it again with the **+** button, as in
+  step 4. Updating an app in place (same version line) does not do this; only a
+  full uninstall and reinstall does.
 - **The AYN panel doesn't appear.** It needs four modules present; its own
   installer will tell you which one is missing.
 
