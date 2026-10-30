@@ -101,6 +101,21 @@ jobs:
           test -x "$SDK/build-tools/37.0.0/aapt2"
           echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
 
+      # Both secrets are whitespace-stripped before use, and the decoded
+      # keystore is verified against EXPECTED_CERT here rather than after the
+      # build. Two reasons, both hit on the first real release (2026-10-30):
+      #
+      #   - `base64 -d` failed with "invalid input" on all five APK tags. A
+      #     secret picks up a trailing newline very easily -- `gh secret set X
+      #     < file` keeps it -- and any stray CR makes the whole value invalid.
+      #   - thor-release.pass is 33 bytes for a 32-character password, i.e. it
+      #     ends in a newline. `--ks-pass pass:<pw>\n` is the WRONG password,
+      #     so a newline that survives into the password fails later, during
+      #     signing, with a far less obvious error than this one.
+      #
+      # Nothing derived from a secret is ever echoed. The stripped password is
+      # re-masked, because GitHub only masks the exact registered string and a
+      # trimmed variant would otherwise print in the clear.
       - name: Materialise the signing key
         if: env.KIND == 'app'
         env:
@@ -109,10 +124,43 @@ jobs:
         run: |
           set -euo pipefail
           install -d -m 700 "$RUNNER_TEMP/signing"
-          printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/signing/thor-release.jks"
-          chmod 600 "$RUNNER_TEMP/signing/thor-release.jks"
-          echo "THOR_KEYSTORE=$RUNNER_TEMP/signing/thor-release.jks" >> "$GITHUB_ENV"
-          echo "THOR_KEYSTORE_PASS=$KS_PASS" >> "$GITHUB_ENV"
+          KS="$RUNNER_TEMP/signing/thor-release.jks"
+
+          B64=$(printf '%s' "$KS_B64" | tr -d '[:space:]')
+          PASS=$(printf '%s' "$KS_PASS" | tr -d '[:space:]')
+          echo "::add-mask::$PASS"
+
+          # Diagnose shape, never content, so a bad secret is actionable.
+          BAD=$(printf '%s' "$B64" | tr -d 'A-Za-z0-9+/=' | wc -c)
+          echo "base64 secret: ${#B64} chars after stripping whitespace, $BAD outside the base64 alphabet"
+          if [ "$BAD" -ne 0 ]; then
+            echo "::error::THOR_KEYSTORE_B64 contains $BAD characters that are not base64."
+            echo "::error::Re-set it with: base64 -w0 thor-release.jks | gh secret set THOR_KEYSTORE_B64 --repo <repo>"
+            exit 1
+          fi
+
+          if ! printf '%s' "$B64" | base64 -d > "$KS" 2>/dev/null; then
+            echo "::error::THOR_KEYSTORE_B64 is not valid base64 (${#B64} chars)."
+            exit 1
+          fi
+          chmod 600 "$KS"
+          [ -s "$KS" ] || { echo "::error::decoded keystore is empty"; exit 1; }
+
+          # Confirm the password opens it AND that it is the expected key,
+          # before the build spends ten minutes signing with the wrong one.
+          if ! OUT=$(keytool -list -v -keystore "$KS" -storepass "$PASS" 2>&1); then
+            echo "::error::the keystore did not open. THOR_KEYSTORE_PASS is wrong,"
+            echo "::error::or carried whitespace. Set it from a file with no trailing"
+            echo "::error::newline: printf %s \"\$(cat thor-release.pass)\" | gh secret set THOR_KEYSTORE_PASS --repo <repo>"
+            exit 1
+          fi
+          FP=$(printf '%s' "$OUT" | grep -m1 'SHA256:' | sed 's/.*SHA256: //; s/://g' | tr 'A-Z' 'a-z')
+          [ "$FP" = "$EXPECTED_CERT" ] || {
+            echo "::error::keystore cert is $FP, expected $EXPECTED_CERT"; exit 1; }
+          echo "ok: release keystore decoded, opened, and matches EXPECTED_CERT"
+
+          echo "THOR_KEYSTORE=$KS" >> "$GITHUB_ENV"
+          echo "THOR_KEYSTORE_PASS=$PASS" >> "$GITHUB_ENV"
 
       - name: Build
         run: cd "$COMPONENT" && ./build.sh
