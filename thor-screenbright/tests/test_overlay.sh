@@ -80,8 +80,10 @@ fi
 # --- the install guard must actually guard -----------------------------------
 # customize.sh compares the ROM's file, stripped of the lead line, against the
 # overlay. Assert it does that comparison rather than merely mentioning it.
-check "customize.sh diffs stock against the overlay" "yes" \
-      "$(grep -q 'diff <(grep -v .<leadDisplayAddress>. "\$STOCK")' magisk/customize.sh && echo yes || echo no)"
+check "customize.sh strips the lead line from stock" "yes" \
+      "$(grep -q 'grep -v .<leadDisplayAddress>. "\$STOCK" > "\$STRIPPED"' magisk/customize.sh && echo yes || echo no)"
+check "customize.sh diffs that against the overlay" "yes" \
+      "$(grep -q 'diff "\$STRIPPED" "\$OURS"' magisk/customize.sh && echo yes || echo no)"
 check "customize.sh aborts when stock has nothing to remove" "yes" \
       "$(grep -q "grep -q '<leadDisplayAddress>' \"\$STOCK\"" magisk/customize.sh && echo yes || echo no)"
 
@@ -108,6 +110,33 @@ check "upgrade case is checked before the stock-ness guard" "ok" \
 check "customize.sh reports the in-place upgrade" "ok" \
       "$(grep -q 'already installed: the live file is this overlay' magisk/customize.sh \
          && echo ok || echo missing)"
+
+# --- REGRESSION: the install script must be POSIX ------------------------------
+#
+# customize.sh used `diff <(grep -v ... "$STOCK") "$OURS"`. Process substitution
+# is a bashism. Magisk sources customize.sh under busybox ash, which does not
+# have it, and the construct is a syntax error for the WHOLE file rather than a
+# failure on that line -- so the guard this script exists to provide would not
+# have run at all.
+#
+# It passed locally for weeks because Fedora's /bin/sh is bash. CI runs on
+# Ubuntu, where /bin/sh is dash, and it failed there immediately. Assert it
+# mechanically so the next bashism does not depend on who runs the tests.
+# Strip comments first: this file's own comment names the bad construct in
+# order to explain it, and a naive grep matches that. Test intent, not text.
+for f in magisk/*.sh; do
+    check "no process substitution in $f" "0" \
+          "$(sed 's/#.*//' "$f" | grep -c '<(')"
+done
+
+if command -v dash >/dev/null 2>&1; then
+    for f in magisk/*.sh; do
+        check "$f parses under dash" "ok" \
+              "$(dash -n "$f" 2>/dev/null && echo ok || echo broken)"
+    done
+else
+    echo "  skip  dash parse check (dash not installed)"
+fi
 
 echo
 echo "  $pass passed, $fail failed"

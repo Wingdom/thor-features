@@ -31,12 +31,21 @@ else
   # The overlay must differ from stock by exactly the lead-display line. Compare
   # the two with that line stripped: anything else that differs means the ROM's
   # file has changed under us and this overlay is stale.
-  if ! diff <(grep -v '<leadDisplayAddress>' "$STOCK") "$OURS" >/dev/null 2>&1; then
+  #
+  # Via a temp file, NOT `diff <(grep ...)`. Process substitution is a bashism:
+  # Magisk sources this script under busybox ash, which does not have it, and
+  # neither does dash -- which is what caught it, as a hard syntax error on the
+  # whole file rather than a failure on this line. Keep this POSIX.
+  STRIPPED="${TMPDIR:-/data/local/tmp}/thor-screenbright-stock-stripped"
+  grep -v '<leadDisplayAddress>' "$STOCK" > "$STRIPPED" 2>/dev/null
+  if ! diff "$STRIPPED" "$OURS" >/dev/null 2>&1; then
+    rm -f "$STRIPPED"
     ui_print "! The ROM's display layout config differs from the one this"
     ui_print "! module was built against. Installing would overwrite changes"
     ui_print "! it does not know about."
     abort "! Rebuild the overlay from the current $STOCK. Aborting."
   fi
+  rm -f "$STRIPPED"
 
   # And it must actually remove something, or the module is a no-op.
   grep -q '<leadDisplayAddress>' "$STOCK" \
