@@ -58,12 +58,42 @@ sha256sum system/vendor/firmware/kiwi/amss20.bin
 See [`THIRD-PARTY.md`](../THIRD-PARTY.md) for the licensing position on this
 file.
 
-## Relationship to `thor-wifi-no6g`
+## Diagnosis: what this cost to find
 
-`thor-wifi-no6g` was the earlier workaround: it disables the 6 GHz band
-outright, leaving 2.4/5 GHz working. **This module supersedes it** — it fixes
-6 GHz rather than giving it up. Do not run both: there is no conflict in the
-files they touch, but `no6g` would disable the band this module repairs.
+The symptom was endless "Connecting… / Authentication problem" on any SSID
+with a 6 GHz radio, and the driver log said why:
+
+```
+__scm_handle_bcn_probe: Drop frame(128) with Invalid AKM suite 400 for 6GHz(6935)
+Auth TX: fail (3)
+lim_process_sae_auth_timeout: SAE auth timeout
+```
+
+The 6 GHz radios are SAE-only. The driver rejected SAE on 6 GHz yet still
+selected those BSSIDs, so authentication failed in a loop.
+
+### Ruled out along the way
+
+- Wrong passphrase, MAC filtering, router-side MAC lockout.
+- The WPA2/WPA3 auto-upgrade paired-profile bug — disabling the SAE
+  `SecurityParams` persisted but was ignored by the framework.
+- **The modem partition itself.** Byte-identical on stock v1.0.0.293 with
+  working WiFi and on LineageOS with broken WiFi, and absent from AYN's OTA
+  payload entirely (20 partitions, no modem). This is what pointed at
+  `/vendor/firmware` load priority as the real difference.
+
+### The earlier workaround, and why it is gone
+
+Before the firmware was available, the band was simply hidden: setting
+`scan_mode_6ghz=0` and `scan_policy_colocated_6ghz=0` in
+`/vendor/etc/wifi/kiwi_v2/WCNSS_qcom_cfg.ini` made the 6 GHz radios invisible
+to the scanner. It worked and cost the entire 6 GHz band.
+
+That lived in a separate `thor-wifi-no6g` module, **removed on 2026-10-30**.
+Keeping a module that disables the band this one repairs was a footgun with no
+upside, and it had no payload in the repository anyway. The stock and patched
+ini values are kept outside the repository with the rest of the reference
+material, at `../../thor/reference/wifi/`.
 
 ## Requires
 
@@ -73,22 +103,24 @@ files they touch, but `no6g` would disable the band this module repairs.
 ## Install
 
 ```sh
-adb push thor-wifi-kiwi-fw /data/local/tmp/
-adb shell "su -c 'M=/data/adb/modules/thor-wifi-kiwi-fw
-  mkdir -p \$M/system/vendor/firmware/kiwi
-  cat /data/local/tmp/thor-wifi-kiwi-fw/system/vendor/firmware/kiwi/amss20.bin \
-    > \$M/system/vendor/firmware/kiwi/amss20.bin
-  cat /data/local/tmp/thor-wifi-kiwi-fw/module.prop > \$M/module.prop
-  chown -R 0:0 \$M'"
-adb reboot
+./build.sh                       # runs the payload tests, then packages
 ```
 
+Flash `dist/thor-wifi-kiwi-fw-v1.0.zip` in Magisk and reboot.
+
 Then verify the running system actually picked it up, rather than trusting the
-reboot:
+reboot — Magisk stages module updates and swaps them at the next boot:
 
 ```sh
 adb shell su -c 'sha256sum /vendor/firmware/kiwi/amss20.bin'
+# expect a4ea7e02c6d5273183776323aec917665cf10205f41bb94aa15e5713341da4ff
 ```
+
+The SELinux context matters: the file must end up labelled
+`vendor_firmware_file`, matching the rest of `/vendor/firmware`, rather than
+the modem partition's `firmware_file`. Magisk derives the label from the
+target path, so flashing the zip gets this right; hand-placing the file into
+`/data/adb/modules/` does not.
 
 ## Disable / remove
 
@@ -102,6 +134,23 @@ again.
 
 ## Tests
 
-None. There is no logic to test — the module is a single file placed at a
-single path. The only meaningful check is the `sha256sum` above, run against
-the live system after a reboot.
+```sh
+./build.sh      # runs 10 host tests, then packages; refuses to package on failure
+```
+
+There is no logic to test — the payload is one file at one path — so the tests
+assert the two things that are easy to get wrong and silent when wrong:
+
+- the blob is the **known-working** firmware by sha256, and specifically **not**
+  the broken modem-partition fallback, which is a plausible 6 MB file with the
+  same name;
+- the overlay targets `/vendor/firmware/kiwi` exactly, since
+  `/vendor/firmware` is the only path with load priority over
+  `/vendor/firmware_mnt`. A typo here installs cleanly and changes nothing.
+
+They also assert the module stays a pure overlay with no scripts, and that the
+blob is not duplicated at the component root where it would drift out of sync
+with the copy that actually gets installed.
+
+The remaining check can only be done on a device: the `sha256sum` against the
+live `/vendor` after a reboot, above.

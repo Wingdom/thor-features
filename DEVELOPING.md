@@ -89,10 +89,11 @@ dev-key fallback is silent by design, which makes a mis-signed release the
 failure mode worth guarding; a component dropping out of the build is caught by
 the same check.
 
-Three components — `thor-sdcard-fsck`, `thor-wifi-kiwi-fw` and
-`thor-wifi-no6g` — have no `build.sh`. They are plain file overlays with no
-packaging step, so CI skips them and they produce no release artifact.
-Installing those is still manual.
+Every component has a `build.sh`, including the two pure file-overlay modules
+(`thor-sdcard-fsck` and `thor-wifi-kiwi-fw`). Those two have no compile step,
+so their `build.sh` runs the payload tests and then zips the module — which
+means a typo in an overlay path fails the build rather than producing a module
+that installs cleanly and changes nothing.
 
 ## Conventions
 
@@ -170,11 +171,17 @@ only; `versionCode` follows.
 `versionCode` must only ever increase. Android refuses to install an APK whose
 code is lower than the installed one.
 
-### Components that cannot be released
+### Every component is releasable
 
-`thor-sdcard-fsck`, `thor-wifi-kiwi-fw` and `thor-wifi-no6g` have no `build.sh`,
-so a tag naming one of them is rejected. They are plain file overlays with no
-packaging step; installing them is manual.
+All sixteen components have a `build.sh`, so any of them can be released by
+tag. The two file-overlay modules were brought into the same shape on
+2026-10-30; before that they had no `build.sh` and a tag naming one was
+rejected.
+
+Note that `release.yml` tells a module from an app by the presence of
+`<component>/magisk/module.prop`. An overlay module that keeps its
+`module.prop` at the component root is misdetected as an app, and the pipeline
+then tries to sign a non-existent APK.
 
 ## Magisk 31 removed the su prompt — and what that cost us
 

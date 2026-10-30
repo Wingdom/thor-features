@@ -1,8 +1,8 @@
 #!/system/bin/sh
-# Manual repair using exfatprogs 1.1.1 (~17s). Rarely needed - the wrapper now
-# self-heals a dirty volume during the normal mount path.
+# Manual repair using exfatprogs 1.1.1 (~17s). Rarely needed - vold's own fsck
+# now completes inside its budget, so a dirty volume is repaired on mount.
 D="${1:-/dev/block/mmcblk1p1}"
-R=/data/adb/modules/thor-sdcard-fsck/fsck.exfat.stock
+R=/system/bin/fsck.exfat
 echo "repairing $D with exfatprogs 1.1.1"
 S=$(date +%s); "$R" -y "$D"; rc=$?; E=$(date +%s)
 echo "exit=$rc elapsed=$((E-S))s"

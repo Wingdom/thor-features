@@ -38,9 +38,16 @@ library was restored, which made it look intermittent.
 
 ## The fix
 
-Ship stock's `exfatprogs 1.1.1` as `/system/bin/fsck.exfat`, extracted from
-`Thor_V1.0.0.293_20251121` stock OTA. A real check and repair runs on every
-mount, inside vold's budget, with ~28 s of headroom.
+Ship `exfatprogs 1.1.1` as `/system/bin/fsck.exfat`. A real check and repair
+runs on every mount, inside vold's budget, with ~28 s of headroom.
+
+The binary is **built from upstream source** by `./build-fsck.sh`, which
+fetches the 1.1.1 release, verifies its sha256 and cross-compiles it for arm64
+with the NDK. Earlier versions of this module shipped AYN's build, lifted from
+the stock OTA; that was replaced on 2026-10-29 because `exfatprogs` is GPL-2.0
+and the corresponding source for AYN's build could not honestly be offered.
+Measured on the same 461 GB card, the two builds are a dead heat and both
+report `exfatprogs version : 1.1.1`.
 
 ## Things ruled out during diagnosis
 
@@ -68,19 +75,23 @@ mount, inside vold's budget, with ~28 s of headroom.
 
 ## Install
 
-    M=/data/adb/modules/thor-sdcard-fsck
-    adb push fsck.exfat repair.sh module.prop /data/local/tmp/
-    adb shell "su -c 'mkdir -p $M/system/bin \
-      && cat /data/local/tmp/fsck.exfat > $M/system/bin/fsck.exfat \
-      && cat /data/local/tmp/repair.sh  > $M/repair.sh \
-      && cat /data/local/tmp/module.prop > $M/module.prop \
-      && chmod 755 $M/system/bin/fsck.exfat $M/repair.sh \
-      && chown -R 0:0 $M \
-      && chcon u:object_r:fsck_exec:s0 $M/system/bin/fsck.exfat'"
-    adb reboot
+```sh
+./build.sh      # runs 15 host tests, then packages
+```
 
-`chcon` matters: `file_contexts` matches `/system/bin/fsck\.exfat` exactly, and a
-wrongly-labelled file will not be executable by vold.
+Flash `dist/thor-sdcard-fsck-v2.0.zip` in Magisk and reboot.
+
+The SELinux label is why this must be a flashed module rather than files
+hand-placed under `/data/adb/modules/`: `file_contexts` matches
+`/system/bin/fsck\.exfat` exactly, and a wrongly-labelled binary is not
+executable by vold. Magisk derives the label from the target path, so flashing
+gets it right.
+
+To rebuild the binary itself from upstream (needs `$ANDROID_NDK`):
+
+```sh
+./build-fsck.sh
+```
 
 ## Disable / remove
 
@@ -103,10 +114,15 @@ vold defers scanning removable storage until the device is unlocked after boot:
 The card won't appear until you unlock the screen. Not a module issue — it cost
 us several confused minutes.
 
-## How the binary was obtained
+## How the stock binary was originally identified
 
-`Thor_20251120_ota.zip` is an A/B payload OTA. Extracted with a minimal
-stdlib-only Python parser (no protobuf dependency): parse the `CrAU` header,
-walk the manifest for the `system` partition's 477 install operations
+The diagnosis needed AYN's own binary to compare against, and it came out of
+the stock OTA. `Thor_20251120_ota.zip` is an A/B payload OTA, read with a
+minimal stdlib-only Python parser (no protobuf dependency): parse the `CrAU`
+header, walk the manifest for the `system` partition's 477 install operations
 (REPLACE / REPLACE_BZ / REPLACE_XZ / ZERO), reassemble `system.img`, then
 `debugfs -R "dump /system/bin/fsck.exfat ..."` to pull the file out.
+
+That established *which version* to ship — 1.1.1 against LineageOS's 1.4.3.
+**The module no longer distributes that binary**; it ships an upstream build,
+as described under *The fix*.

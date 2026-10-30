@@ -60,3 +60,11 @@ README-dev.md
 # committed by accident.
 # ---------------------------------------------------------------------------
 *.local.md
+
+# ---------------------------------------------------------------------------
+# Staged module payload. thor-sdcard-fsck/build.sh copies the tracked
+# fsck.exfat into the module tree at package time; tracking the copy as well
+# would put the same 34 KB binary in git twice and let the two drift. The
+# module tests assert the staged copy matches the source.
+# ---------------------------------------------------------------------------
+thor-sdcard-fsck/magisk/system/bin/fsck.exfat

@@ -45,8 +45,8 @@ No app, nothing to configure. Install and forget.
 | `thor-display-density` | Adds main-screen density options Settings doesn't offer. |
 | `thor-screenbright` | Lets the two screens have separate brightness instead of moving together. |
 
-Two older modules are kept for reference only and you should skip both:
-`thor-wifi-no6g` (replaced by `thor-wifi-kiwi-fw`) and `thor-display-match`.
+One older module is kept for reference only and you should skip it:
+`thor-display-match`.
 
 ---
 

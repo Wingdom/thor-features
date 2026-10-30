@@ -1,6 +1,0 @@
-id=thor-wifi-no6g
-name=Thor WiFi - disable 6GHz
-version=v1.0
-versionCode=1
-author=local
-description=Sets oem_6g_support_disable=1 in the QCA kiwi_v2 driver ini. The 6GHz radios are SAE-only, the driver rejects SAE on 6GHz ("Invalid AKM suite 400 for 6GHz") yet still selects those BSSIDs, and Auth TX fails - causing an endless authentication loop. Disabling 6GHz leaves 2.4/5GHz WPA2 with full mesh roaming.
