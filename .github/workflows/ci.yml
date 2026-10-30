@@ -31,13 +31,20 @@ jobs:
       # literally "android-37.0", not "android-37" -- its AndroidVersion.ApiLevel
       # is "37.0".
       #
-      # The cmdline-tools build number is load-bearing: `platforms;android-37.0`
-      # is published only in Google's repository2-3.xml manifest, and older
-      # cmdline-tools read repository2-1/2-2 and simply cannot see it. The
-      # previous pin (11076708) resolved `build-tools;37.0.0`, which IS in every
-      # manifest, and then failed on the platform -- so the symptom looks like a
-      # bad package name rather than a stale tool. Do not downgrade this without
-      # checking the package is still visible to it.
+      # Two traps here, both found the hard way on 2026-10-30:
+      #
+      # 1. Do NOT reintroduce `yes | sdkmanager --licenses`. sdkmanager exits
+      #    before `yes` finishes writing, `yes` dies on SIGPIPE, and under
+      #    `set -o pipefail` that 141 aborts the step. This failed two CI runs
+      #    before anything was built. Current cmdline-tools does not need it --
+      #    it answers "The --licenses option is no longer needed" -- and
+      #    installs these packages with no license step at all.
+      #
+      # 2. Keep the cmdline-tools pin current. The old pin (11076708) could see
+      #    `platforms;android-37.0` but refused to install it without accepted
+      #    licenses, and **exited 0 having installed nothing** -- which is why
+      #    the `test -x` / `test -f` assertions below are not redundant. They
+      #    are the only thing that catches a silent no-op install.
       - name: Install Android SDK packages
         run: |
           set -euo pipefail
@@ -47,7 +54,6 @@ jobs:
           curl -fsSL -o tools.zip \
             https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
           unzip -q tools.zip && mv cmdline-tools latest && rm tools.zip
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
             'build-tools;37.0.0' 'platforms;android-37.0'
           test -x "$SDK/build-tools/37.0.0/aapt2"

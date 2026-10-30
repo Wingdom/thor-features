@@ -84,9 +84,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # The cmdline-tools build number is load-bearing -- see the longer note in
-      # ci.yml. `platforms;android-37.0` is only in Google's repository2-3.xml,
-      # which older cmdline-tools cannot read.
+      # Keep the cmdline-tools pin current, and do not reintroduce
+      # `yes | sdkmanager --licenses` -- it dies on SIGPIPE under pipefail.
+      # See the longer note in ci.yml.
       - name: Install Android SDK packages
         if: env.KIND == 'app'
         run: |
@@ -96,7 +96,6 @@ jobs:
           curl -fsSL -o tools.zip \
             https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
           unzip -q tools.zip && mv cmdline-tools latest && rm tools.zip
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
             'build-tools;37.0.0' 'platforms;android-37.0'
           test -x "$SDK/build-tools/37.0.0/aapt2"
