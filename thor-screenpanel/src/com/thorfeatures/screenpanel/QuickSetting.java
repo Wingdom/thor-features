@@ -41,14 +41,25 @@ public final class QuickSetting {
     public final String[] labels;
     /** The label shown when the CLI reports a state outside {@link #wires}. */
     public final String inactiveLabel;
+    /**
+     * A wire that is in the cycle but means "doing nothing", or null.
+     *
+     * Fan and Stick differ here. FanMode.tiers() excludes "default", so
+     * anything in the fan cycle is a real tier. StickMode.choices() *includes*
+     * "off", because turning the LEDs off is a thing you pick rather than a
+     * fallback state. Without this, "off" counted as active and the tile drew
+     * a lit icon beside the word Off - seen on the device 2026-11-01.
+     */
+    public final String offWire;
 
     public QuickSetting(Kind kind, String binary, String[] wires, String[] labels,
-                        String inactiveLabel) {
+                        String inactiveLabel, String offWire) {
         this.kind = kind;
         this.binary = binary;
         this.wires = wires;
         this.labels = labels;
         this.inactiveLabel = inactiveLabel;
+        this.offWire = offWire;
     }
 
     /** The command that reports the current state. */
@@ -93,6 +104,15 @@ public final class QuickSetting {
         return i < 0 ? inactiveLabel : labels[i];
     }
 
-    /** True when the control is in one of its cycle states, i.e. looks "on". */
-    public boolean isActive(String wire) { return indexOf(wire) >= 0; }
+    /**
+     * True when the control is actually doing something, i.e. looks "on".
+     *
+     * Being in the cycle is not enough: a cycle can contain an explicit "off"
+     * entry, and that must not render as active.
+     */
+    public boolean isActive(String wire) {
+        int i = indexOf(wire);
+        if (i < 0) return false;
+        return offWire == null || !wires[i].equalsIgnoreCase(offWire);
+    }
 }

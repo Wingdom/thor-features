@@ -31,8 +31,10 @@ public final class QuickSettings {
             wires[i] = tiers[i].wire();
             labels[i] = tiers[i].label();
         }
+        // "default" is excluded from tiers(), so every entry here is a real
+        // tier and none of them means "off".
         return new QuickSetting(QuickSetting.Kind.FAN, "/system/bin/fanctl",
-                wires, labels, FanMode.STOCK.label());
+                wires, labels, FanMode.STOCK.label(), null);
     }
 
     public static QuickSetting stick() {
@@ -43,7 +45,9 @@ public final class QuickSettings {
             wires[i] = choices[i].wire();
             labels[i] = choices[i].label();
         }
+        // OFF is inside choices() - it is a thing you pick - so it has to be
+        // named as the inactive state or the tile lights up while saying Off.
         return new QuickSetting(QuickSetting.Kind.STICK, "/system/bin/stickfx",
-                wires, labels, StickMode.OFF.label());
+                wires, labels, StickMode.OFF.label(), StickMode.OFF.wire());
     }
 }

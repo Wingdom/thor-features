@@ -39,6 +39,16 @@ public final class PanelActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     private RootClient root;
+    /**
+     * The panel's root transport: one persistent `su` shell for the life of
+     * the activity, instead of a fresh `su` per command.
+     *
+     * Everything in the panel goes through it, because the alternative is two
+     * transports with two failure modes for no benefit. It falls back to
+     * one-shot `su` on any failure, so a session that cannot open leaves the
+     * panel working exactly as it did before, only slower.
+     */
+    private RootSession session;
     private Mode currentMode = Mode.DUAL;
     private int bottomDisplay = 1;
 
@@ -57,7 +67,8 @@ public final class PanelActivity extends Activity {
 
         insetCardAboveSystemBars();
 
-        root = new RootClient(RootClient.EXEC);
+        session = new RootSession();
+        root = new RootClient(session);
 
         // The display this panel is actually on is the one to treat as
         // "bottom" when it is not the default display. Resolved, never
@@ -379,6 +390,10 @@ public final class PanelActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        // Close the shell before stopping the executor: a command in flight
+        // holds the session's lock, and killing the thread under it would
+        // leave a root process with no owner.
+        if (session != null) session.close();
         io.shutdownNow();
         super.onDestroy();
     }

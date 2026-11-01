@@ -42,7 +42,7 @@ javac --release 17 -nowarn -d out/test \
     $SHARED_SRC \
     "src/$PKG_PATH/ScreenMode.java" "src/$PKG_PATH/PanelCommands.java" \
     "src/$PKG_PATH/QuickSetting.java" "src/$PKG_PATH/QuickSettings.java" \
-    "src/$PKG_PATH/Brightness.java" \
+    "src/$PKG_PATH/Brightness.java" "src/$PKG_PATH/RootProtocol.java" \
     "test/$PKG_PATH/TestMain.java" || { echo "test compile failed"; exit 1; }
 java -cp out/test com.thorfeatures.screenpanel.TestMain || { echo "build aborted: unit tests failed"; exit 1; }
 ./tests/test_action.sh || { echo "build aborted: action script tests failed"; exit 1; }

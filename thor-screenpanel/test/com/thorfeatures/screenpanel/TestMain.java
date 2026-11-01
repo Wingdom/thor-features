@@ -406,6 +406,17 @@ public final class TestMain {
         check("an unreadable state still enters at the first entry",
               "quiet", fan.next(null));
 
+        // An explicit "off" inside the cycle must not render as active. The
+        // stick tile drew a lit icon beside the word Off until this was fixed.
+        check("stick off does not look active", false, stick.isActive("off"));
+        check("stick charge looks active", true, stick.isActive("charge"));
+        check("stick breathe looks active", true, stick.isActive("breathe"));
+        // The fan cycle has no off entry, so every tier is active.
+        List<String> fanInactive = new ArrayList<>();
+        for (String w : fan.wires) if (!fan.isActive(w)) fanInactive.add(w);
+        check("every fan tier looks active", "[]", fanInactive.toString());
+        check("a state outside the cycle is never active", false, fan.isActive("default"));
+
         check("default is shown as the inactive label", "Stock", fan.labelFor("default"));
         check("default does not look active", false, fan.isActive("default"));
         check("a tier looks active", true, fan.isActive("performance"));
@@ -526,6 +537,86 @@ public final class TestMain {
 
         check("percent is reported for display", 60, Brightness.percent(0.6f));
         check("percent of the minimum is 1", 1, Brightness.percent(Brightness.MIN));
+
+        // --- the persistent root session's framing ----------------------------
+        // A long-lived `su` shell has no process exit to mark the end of a
+        // reply, so every command is wrapped to emit a sentinel carrying $?.
+        // Everything below is the part of that transport that is pure text.
+        String sent = RootProtocol.newSentinel();
+
+        check("a wrapped command reports its exit status", true,
+              RootProtocol.wrap("true", sent).contains(sent + " $?"));
+        // A subshell, so a `cd`, `set -e` or `exit` inside a command cannot
+        // alter or kill the session shell.
+        check("the command runs in a subshell", true,
+              RootProtocol.wrap("exit 1", sent).startsWith("( exit 1 )"));
+        // stdin closed, or a child that reads stdin eats the next queued
+        // command - the same class of bug as adb swallowing stdin in a loop.
+        check("the command cannot read the session's stdin", true,
+              RootProtocol.wrap("cat", sent).contains("</dev/null"));
+        check("stderr is folded into the reply", true,
+              RootProtocol.wrap("x", sent).contains("2>&1"));
+
+        check("a sentinel line is recognised", true,
+              RootProtocol.isSentinel(sent + " 0", sent));
+        check("ordinary output is not a sentinel", false,
+              RootProtocol.isSentinel("quiet", sent));
+        // A line that merely starts with the sentinel text but carries no
+        // status is not a frame boundary.
+        check("the sentinel needs its status field", false,
+              RootProtocol.isSentinel(sent, sent));
+
+        check("exit status is read off the sentinel", 0,
+              RootProtocol.exitCodeOf(sent + " 0", sent));
+        check("a non-zero status is read", 1,
+              RootProtocol.exitCodeOf(sent + " 1", sent));
+        // -1, never 0: callers treat 0 as success, so an unreadable status
+        // must not be able to masquerade as one.
+        check("an unreadable status is -1, not success", -1,
+              RootProtocol.exitCodeOf(sent + " banana", sent));
+        check("a non-sentinel line yields -1", -1,
+              RootProtocol.exitCodeOf("some output", sent));
+        check("null yields -1", -1, RootProtocol.exitCodeOf(null, sent));
+
+        // --- the desync the random sentinel prevents --------------------------
+        // A fixed sentinel could be printed by a command, truncating its own
+        // reply and shifting every later reply onto the wrong command. Two
+        // sessions must never share a marker.
+        java.util.Set<String> sentinels = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < 200; i++) sentinels.add(RootProtocol.newSentinel());
+        check("every session gets a distinct sentinel", 200, sentinels.size());
+        check("a sentinel is not guessable from the command text", false,
+              RootProtocol.newSentinel().equals(RootProtocol.newSentinel()));
+
+        // --- argv translation -------------------------------------------------
+        // RootClient hands out `su -c <command>`; over a session the `su -c`
+        // is implied and only the command travels.
+        check("the command is taken out of a su argv", "/system/bin/fanctl get",
+              RootProtocol.commandOf(PanelCommands.suArgv("/system/bin/fanctl get")));
+        // Anything not of that exact shape must be refused so it falls back to
+        // a real `su` rather than being silently reinterpreted.
+        check("a non-su argv is refused", null,
+              RootProtocol.commandOf(new String[] { "echo", "hi" }));
+        check("a short argv is refused", null,
+              RootProtocol.commandOf(new String[] { "su" }));
+        check("a null argv is refused", null, RootProtocol.commandOf(null));
+
+        // Every command the panel can build must survive the round trip
+        // through the session transport unchanged.
+        List<String> mangled = new ArrayList<>();
+        List<String> all = new ArrayList<>();
+        all.add(PanelCommands.SCREENBLANK + " status");
+        all.add(PanelCommands.SCREENMOVE + " status");
+        all.add(fan.statusCommand());
+        all.add(stick.statusCommand());
+        all.add(Brightness.getCommand(0));
+        all.add(Brightness.setCommand(1, 0.5f));
+        for (Mode m : modes) all.addAll(PanelCommands.commandsFor(
+                ScreenMode.plan(m, false, false, BOTTOM)));
+        for (String c : all) {
+            if (!c.equals(RootProtocol.commandOf(PanelCommands.suArgv(c)))) mangled.add(c);
+        }
+        check("every panel command survives the transport unchanged", "[]", mangled.toString());
 
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");

@@ -24,6 +24,56 @@ Three scales are in play on this device and are easy to confuse: the framework
 float `[0,1]`, the backlight node `0..4095`, and the `screen_brightness`
 setting `0..255`. `Brightness.java` converts between them in one place.
 
+## The root transport — read this before adding a feature
+
+Everything the panel runs as root goes over **one persistent `su` shell**,
+opened when the panel opens and closed with it. Measured on the device
+2026-11-01:
+
+| | per command |
+|---|---|
+| a fresh `su` per command | 38 ms |
+| the persistent session | 17 ms |
+
+### Adding a feature needs no change to the transport
+
+Commands are plain shell strings. Build yours, hand it to `RootClient`, and it
+runs over the session:
+
+```java
+RootClient.Result r = root.run("/system/bin/mything status");
+if (r.code == 0) { /* r.out */ }
+```
+
+`RootClient` takes a `Runner` in its constructor, so a fake runner tests your
+feature on the host with no device and no root — that is how all 119 tests
+work. Keep new logic above that seam (pure text in, pure text out) and it is
+testable; put it in the activity and it is not.
+
+### The two things worth knowing
+
+**It always falls back.** Any failure — session will not open, times out,
+dies mid-command — returns to one-shot `su`. A dead session makes the panel
+slower, not broken. Do not add a code path that assumes the session is live.
+
+**The session is where caching belongs.** This is its real advantage over
+`su`, and the reason it was built. The panel's slow open was never spawn cost:
+of 1109 ms for six commands, spawning was ~174 ms and `screenblank status`
+alone was 581 ms, because it walks `/sys/class/input` twice on every call to
+resolve digitisers by name. A fresh `su` can never remember that; a session
+can. `RootProtocol.prelude()` runs once per session and is the hook for it.
+
+> Measure before optimising here. The obvious answer — "spawning `su` is
+> slow" — was wrong by a factor of three, and the real cost was in a script
+> this project wrote.
+
+### Threading
+
+One shell, one stdin, one stdout, so commands are serialised on the session.
+The panel issues everything from a single-threaded executor. If you add a
+second caller, the lock already protects the stream, but two slow commands
+will now queue behind each other.
+
 ## Scope: the panel is UI, the modules are not its business
 
 The panel invokes each CLI the same way that CLI's own Quick Settings tile
