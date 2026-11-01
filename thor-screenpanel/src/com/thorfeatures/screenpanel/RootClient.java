@@ -30,11 +30,34 @@ public final class RootClient {
 
     public Result run(String command) { return runner.run(PanelCommands.suArgv(command)); }
 
-    /** Current blanked state as {top, bottom}; nothing dark if the call fails. */
-    public boolean[] blankState() {
+    /**
+     * Whether screenblank answered, and what it said.
+     *
+     * These arrive together because they come from one command. An earlier
+     * version asked twice - `available()` ran `screenblank status` purely to
+     * see whether it exited 0, then `blankState()` ran it again for the
+     * answer. That command is the panel's most expensive, so the redundant
+     * call cost more than any optimisation since has saved.
+     */
+    public static final class BlankState {
+        /** False when the command did not run: module missing or root denied. */
+        public final boolean available;
+        public final boolean topDark;
+        public final boolean bottomDark;
+
+        BlankState(boolean available, boolean topDark, boolean bottomDark) {
+            this.available = available;
+            this.topDark = topDark;
+            this.bottomDark = bottomDark;
+        }
+    }
+
+    /** Read screenblank once, for both availability and state. */
+    public BlankState blankState() {
         Result r = run(PanelCommands.SCREENBLANK + " status");
-        if (r.code != 0) return new boolean[] { false, false };
-        return PanelCommands.parseBlankStatus(r.out);
+        if (r.code != 0) return new BlankState(false, false, false);
+        boolean[] dark = PanelCommands.parseBlankStatus(r.out);
+        return new BlankState(true, dark[0], dark[1]);
     }
 
     /** Which screens have something worth moving, as {top, bottom}. */
@@ -64,11 +87,6 @@ public final class RootClient {
     /** Select a state on a quick setting. True only on a clean exit. */
     public boolean quickSet(QuickSetting q, String wire) {
         return run(q.setCommand(wire)).code == 0;
-    }
-
-    /** True when screenblank answers - module installed and root granted. */
-    public boolean available() {
-        return run(PanelCommands.SCREENBLANK + " status").code == 0;
     }
 
     /**

@@ -88,30 +88,75 @@ touch_name_for() {
     esac
 }
 
-# Resolve a touch device's sysfs directory from its name. Reads the same
-# /sys/class/input/input*/name listing that _resolve_stdin is tested against.
-input_dir_for() {
-    want=$(touch_name_for "$1") || return 1
+# Resolve both digitisers' sysfs directories from their names.
+#
+# One pass, and the result is remembered for the rest of this invocation.
+# `status` asks for a digitiser four times - once directly and once inside
+# touch_disabled, for each of two screens - and re-walking for each of those
+# was the single most expensive thing this script did.
+#
+# `read` is a shell builtin; `cat` is a fork. Over the nine input directories
+# on this device that is the whole difference: 87 ms with cat, 13 ms with
+# read, measured 2026-11-01. `status` went from 482 ms to 179 ms on that
+# change alone, with byte-identical output.
+#
+# Resolving both in one pass rather than caching per-name is deliberate: the
+# caller always wants both eventually, and a second pass would cost as much
+# as the first.
+_TOP_DIR=
+_BOT_DIR=
+_RESOLVED=
+
+_resolve_all() {
+    [ -n "$_RESOLVED" ] && return 0
+    _RESOLVED=1
     for d in /sys/class/input/input*; do
         [ -r "$d/name" ] || continue
-        n=$(cat "$d/name" 2>/dev/null)
-        # Exact match: "fts_ts" must not resolve to "fts_ts_secondary".
-        [ "$n" = "$want" ] || continue
+        read -r n < "$d/name" 2>/dev/null || continue
         [ -e "$d/device/fts_irq" ] || continue
-        echo "$d/device"
-        return 0
+        _classify "$n" "$d/device"
+        [ -n "$_TOP_DIR" ] && [ -n "$_BOT_DIR" ] && break
     done
+    return 0
+}
+
+# The name-matching rule, in one place.
+#
+# A shell function call is not a fork, so this costs nothing in the loop, and
+# keeping it separate means the host tests exercise the rule the device
+# actually runs. An earlier version had a parallel `_resolve_stdin` for the
+# tests; when the live loop was rewritten that copy was left behind, and the
+# tests went on passing while covering code nothing called.
+#
+# Exact match matters: "fts_ts" must not resolve to "fts_ts_secondary".
+_classify() {
+    case "$1" in
+        fts_ts)           _TOP_DIR="$2" ;;
+        fts_ts_secondary) _BOT_DIR="$2" ;;
+    esac
+}
+
+input_dir_for() {
+    _resolve_all
+    case "$1" in
+        top)    [ -n "$_TOP_DIR" ] && { echo "$_TOP_DIR"; return 0; } ;;
+        bottom) [ -n "$_BOT_DIR" ] && { echo "$_BOT_DIR"; return 0; } ;;
+    esac
     return 1
 }
 
-# The name-matching rule on its own, so the "fts_ts must not match
-# fts_ts_secondary" case can be tested on the host without /sys.
-# stdin: lines of "<dir> <name>"; argv: the wanted name.
+# Host-test entry point: drive the real matcher over recorded input.
+# stdin is lines of "<dir> <name>"; argv is the wanted screen.
 _resolve_stdin() {
     want=$1
+    _TOP_DIR=; _BOT_DIR=
     while read -r dir name; do
-        [ "$name" = "$want" ] && { echo "$dir"; return 0; }
+        _classify "$name" "$dir"
     done
+    case "$want" in
+        fts_ts)           [ -n "$_TOP_DIR" ] && { echo "$_TOP_DIR"; return 0; } ;;
+        fts_ts_secondary) [ -n "$_BOT_DIR" ] && { echo "$_BOT_DIR"; return 0; } ;;
+    esac
     return 1
 }
 
@@ -201,7 +246,9 @@ cmd_status() {
     # every column below reads "off"/"disabled" through no action of ours.
     # Without this line that output looks like a device whose touch we broke -
     # it briefly fooled the author on 2026-10-22.
-    wake=$(dumpsys power 2>/dev/null | grep -oE "mWakefulness=[A-Za-z]+" | head -1)
+    # grep -m1 exits on the first match, which SIGPIPEs dumpsys instead of
+    # letting it write the whole power dump: 60 ms -> 36 ms.
+    wake=$(dumpsys power 2>/dev/null | grep -m1 -oE "mWakefulness=[A-Za-z]+")
     case "$wake" in
         *Awake|"") ;;
         *) echo "note    : device is ${wake#mWakefulness=} - while the screen is off the"

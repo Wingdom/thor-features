@@ -315,15 +315,16 @@ public final class PanelActivity extends Activity {
     /** Read the device's current state and mark the matching option. */
     private void refresh() {
         io.execute(() -> {
-            if (!root.available()) {
+            // One call, not two: availability and state come back together.
+            RootClient.BlankState bs = root.blankState();
+            if (!bs.available) {
                 ui.post(() -> {
                     Toast.makeText(this, R.string.no_root, Toast.LENGTH_LONG).show();
                     finish();
                 });
                 return;
             }
-            boolean[] dark = root.blankState();
-            Mode m = ScreenMode.current(dark[0], dark[1]);
+            Mode m = ScreenMode.current(bs.topDark, bs.bottomDark);
             ui.post(() -> { currentMode = m; markSelected(m); });
         });
         refreshQuick();
@@ -351,10 +352,10 @@ public final class PanelActivity extends Activity {
     private void select(Mode target) {
         markSelected(target);                     // immediate feedback
         io.execute(() -> {
-            boolean[] dark = root.blankState();
+            RootClient.BlankState bs = root.blankState();
             boolean[] movable = root.movableState();
             List<ScreenMode.Op> ops = PanelCommands.dropNoOpMoves(
-                    ScreenMode.plan(target, dark[0], dark[1], bottomDisplay),
+                    ScreenMode.plan(target, bs.topDark, bs.bottomDark, bottomDisplay),
                     movable[0], movable[1]);
             String failed = root.apply(PanelCommands.commandsFor(ops));
             ui.post(() -> {

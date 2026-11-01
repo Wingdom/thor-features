@@ -56,16 +56,60 @@ testable; put it in the activity and it is not.
 dies mid-command — returns to one-shot `su`. A dead session makes the panel
 slower, not broken. Do not add a code path that assumes the session is live.
 
-**The session is where caching belongs.** This is its real advantage over
-`su`, and the reason it was built. The panel's slow open was never spawn cost:
-of 1109 ms for six commands, spawning was ~174 ms and `screenblank status`
-alone was 581 ms, because it walks `/sys/class/input` twice on every call to
-resolve digitisers by name. A fresh `su` can never remember that; a session
-can. `RootProtocol.prelude()` runs once per session and is the hook for it.
+**Caching in the session was investigated and rejected.** The session was
+built on the theory that `prelude()` would be the place to cache
+`screenblank`'s digitiser resolution. Measuring that resolution showed the
+theory was wrong twice over.
 
-> Measure before optimising here. The obvious answer — "spawning `su` is
-> slow" — was wrong by a factor of three, and the real cost was in a script
-> this project wrote.
+It was not slow because it was uncached. It was slow because it forked `cat`
+once per directory, and because `status` asked for a digitiser four times --
+once directly and once inside `touch_disabled`, for each of two screens.
+Over nine directories on this device:
+
+| resolving one digitiser | |
+|---|---|
+| `cat` per directory | 87 ms |
+| `read` builtin | 13 ms |
+
+Fixing that -- one pass resolving both digitisers, `read` instead of `cat`,
+and `grep -m1` so `dumpsys` is killed by SIGPIPE rather than read to the end
+-- took `screenblank status` from **482 ms to 179 ms** with byte-identical
+output. Afterwards the resolution is 13 ms of 187 ms, so caching it in the
+session would save about 7%, for real complexity.
+
+The fix also helps every caller -- the CLI, the Quick Settings tile,
+`action.sh` on every AYN button press -- where a session cache helps only the
+panel.
+
+**The larger win was a deletion.** `RootClient.available()` and
+`blankState()` both ran `screenblank status`, and `refresh()` called them in
+sequence, so the panel ran its most expensive command twice on every open.
+They are now one call returning both answers. Open cost, both changes
+together:
+
+| | before | after |
+|---|---|---|
+| `screenblank status` | 513 x2 | 200 x1 |
+| `screenmove status` | 211 | 211 |
+| `fanctl` / `stickfx` / brightness x2 | 176 | 176 |
+| **total** | **~1413 ms** | **~587 ms** |
+
+> Measure before optimising here, and measure again after. Three predictions
+> in a row were wrong in this file's history: that `su` spawn was the
+> bottleneck (it was 174 ms of 1109), that caching was the next win (the
+> forks were), and that dropping `dumpsys window` from `screenmove status`
+> would save 56 ms (it saved 28).
+
+**`screenmove status` was looked at and left alone.** It is ~200 ms, of which
+about 120 ms is three different `dumpsys` services -- `window` for the
+focused display, `display` for the bottom panel, `activity activities` for
+the tasks. None is removable: the focused display id appears only in the full
+`dumpsys window` output, not in `window displays`, `window policy`, or the
+activity dump. A narrower `movable` subcommand that skips `dumpsys window`
+measured 172 ms against 200 ms, and merging its two `awk` passes would save
+~20 ms more at the cost of duplicating a host-tested parser. A 14% win for a
+second copy of a parsing rule is the trade this project already regretted
+once, so it was not taken.
 
 ### Threading
 

@@ -72,13 +72,13 @@ check "an unreadable node is lit"   "lit"  "$(isdark '')"
 # The same rule must be the one the script actually uses - assert the script
 # does not compare bl_power to a single literal value.
 check "screenblank does not test bl_power against one literal" "" \
-      "$(grep -oE '\[ *"\$\(cat [^)]*bl_power[^)]*\)" *= *"[0-9]"' ../screenblank | tr '\n' ' ')"
+      "$(grep -oE '\[ *"\$\(cat [^)]*bl_power[^)]*\)" *= *"[0-9]"' screenblank | tr '\n' ' ')"
 
 # --- no persisted state -------------------------------------------------------
 # A suspend/resume reverts both writes without telling us, so any remembered
 # "this screen is off" goes stale. Every answer must be read live.
 check "screenblank persists no state file" "" \
-      "$(grep -oE '(>>?|rm -f|mv) *"\$STATE_DIR[^"]*"' ../screenblank | tr '\n' ' ')"
+      "$(grep -oE '(>>?|rm -f|mv) *"\$STATE_DIR[^"]*"' screenblank | tr '\n' ' ')"
 
 echo
 echo "  $pass passed, $fail failed"
