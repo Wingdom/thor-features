@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A broom: clearing out background apps. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp" android:height="26dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M16.24,2.35l1.41,1.41 -5.13,5.13 -1.41,-1.41z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M9.62,8.92l5.46,5.46 -5.3,5.3a2.5,2.5 0 0 1 -3.54,0l-1.92,-1.92a2.5,2.5 0 0 1 0,-3.54zM8.9,17.4l-1.3,-1.3 3.9,-3.9 1.3,1.3z" />
+</vector>

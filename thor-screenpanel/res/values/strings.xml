@@ -20,4 +20,12 @@
     <string name="bright_bottom">Bottom</string>
     <string name="bright_unknown">—</string>
     <string name="bright_locked">Needs thor-screenbright</string>
+    <string name="hz_low">60</string>
+    <string name="hz_high">120</string>
+    <string name="row_volume">Volume</string>
+    <string name="quick_clean">Clean memory</string>
+    <string name="quick_haptics">Haptics</string>
+    <string name="haptics_on">On</string>
+    <string name="haptics_off">Off</string>
+    <string name="cleaned">Background apps cleared</string>
 </resources>

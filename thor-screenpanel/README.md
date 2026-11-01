@@ -98,14 +98,18 @@ to turn on.
 ## What is in the panel
 
 **Brightness** — a slider per screen, styled after the notification shade's.
-Needs `thor-screenbright`, which decouples the two panels; without it both
-screens share one brightness and the bottom slider does nothing. The floor is
-1%, not 0: at 0 the panel looks switched off rather than dim, and "off" has its
-own control in the Mode row.
+ needs `thor-screenbright`, which decouples the two
+panels; without it both screens share one brightness and the bottom slider does
+nothing. The floor is 1%, not 0: at 0 the panel looks switched off rather than
+dim, and "off" has its own control in the Mode row. Volume has no such floor —
+silence is a setting people want.
 
-**Quick settings** — Fan and Stick LEDs cycle through the same states their
-Quick Settings tiles offer, and Move app sends the foreground app to the other
-screen. These reuse the tiles' own mode definitions rather than copying them,
+**Quick settings** — five tiles. Fan and Stick LEDs cycle through the same
+states their Quick Settings tiles offer, Move app sends the foreground app to
+the other screen, Clean memory clears background apps, and Haptics toggles
+touch feedback. Stock's vibration tile wrote `vibrate_on`, which does not
+exist on this build — it reads `null` — so this drives
+`haptic_feedback_enabled` instead. These reuse the tiles' own mode definitions rather than copying them,
 so a renamed state breaks the build instead of silently invoking an argument
 the CLI no longer accepts.
 

@@ -618,6 +618,98 @@ public final class TestMain {
         }
         check("every panel command survives the transport unchanged", "[]", mangled.toString());
 
+        // --- refresh rate -----------------------------------------------------
+        // Two rates only. dumpsys lists fps=120.00001 and fps=60.000004 for
+        // both panels and nothing else, so stock's 60/90/120 does not apply.
+        check("exactly two rates are offered", "[60, 120]", Arrays.toString(RefreshRate.RATES));
+        check("the reported rates map to 120", 120, RefreshRate.nearest(120.00001));
+        check("the reported rates map to 60", 60, RefreshRate.nearest(60.000004));
+        check("tapping the other half flips it", 120, RefreshRate.other(60));
+        check("and back", 60, RefreshRate.other(120));
+
+        // The width and height differ per screen and are read from the
+        // Display at runtime, never hardcoded.
+        check("set command carries the display's own size",
+              "cmd display set-user-preferred-display-mode 1240 1080 60 1 true",
+              RefreshRate.setCommand(1, 1240, 1080, 60));
+        check("the main screen gets its own size",
+              "cmd display set-user-preferred-display-mode 1920 1080 120 0 true",
+              RefreshRate.setCommand(0, 1920, 1080, 120));
+        check("get command targets the display",
+              "cmd display get-user-preferred-display-mode 1", RefreshRate.getCommand(1));
+
+        // Three replies seen on hardware, two of which mean "no preference".
+        check("parses an explicit 60", 60,
+              RefreshRate.parse("User preferred display mode: 1240 1080 60.0"));
+        check("parses an explicit 120", 120,
+              RefreshRate.parse("User preferred display mode: 1920 1080 120.0"));
+        check("the never-set form reports the default", RefreshRate.DEFAULT,
+              RefreshRate.parse("User preferred display mode: -1 -1 0.0"));
+        check("the cleared form reports the default", RefreshRate.DEFAULT,
+              RefreshRate.parse("User preferred display mode: null"));
+        check("an unreadable reply reports the default", RefreshRate.DEFAULT,
+              RefreshRate.parse(null));
+        check("garbage reports the default", RefreshRate.DEFAULT,
+              RefreshRate.parse("cmd: not found"));
+
+        // Whatever comes back, the control must land on one of the two halves
+        // — never on neither, which reads as broken rather than untouched.
+        List<String> offScale = new ArrayList<>();
+        String[] replies = {
+            "User preferred display mode: 1240 1080 60.0",
+            "User preferred display mode: -1 -1 0.0",
+            "User preferred display mode: null", "", "  ", null, "nonsense",
+            "User preferred display mode: 1240 1080 90.0"
+        };
+        for (String r : replies) {
+            int v = RefreshRate.parse(r);
+            if (v != RefreshRate.LOW && v != RefreshRate.HIGH)
+                offScale.add(String.valueOf(r) + " -> " + v);
+        }
+        check("every reply resolves to one of the two rates", "[]", offScale.toString());
+
+        List<String> rrInject = new ArrayList<>();
+        for (int rate : RefreshRate.RATES) {
+            String c = RefreshRate.setCommand(1, 1240, 1080, rate);
+            if (c.matches(".*[;&|$`><\\\\\'\"\\n].*")) rrInject.add(c);
+        }
+        check("no refresh-rate command contains a shell metacharacter", "[]", rrInject.toString());
+
+        // --- haptics ------------------------------------------------------------
+        // Stock's vibrate_on reads null on this build; haptic_feedback_enabled
+        // is the live key.
+        check("haptics key is the one that exists here",
+              "settings get system haptic_feedback_enabled", SystemToggle.hapticsGetCommand());
+        check("haptics on", "settings put system haptic_feedback_enabled 1",
+              SystemToggle.hapticsSetCommand(true));
+        check("haptics off", "settings put system haptic_feedback_enabled 0",
+              SystemToggle.hapticsSetCommand(false));
+        check("parses 1 as on", Boolean.TRUE, SystemToggle.parseHaptics("1"));
+        check("parses 0 as off", Boolean.FALSE, SystemToggle.parseHaptics("0\n"));
+
+        // "Unset" and "unreadable" must NOT read as off: a tile showing off
+        // invites a tap that turns haptics ON for someone who had them on.
+        check("an unset key is unknown, not off", null, SystemToggle.parseHaptics("null"));
+        check("an unreadable reply is unknown", null, SystemToggle.parseHaptics(null));
+        check("an empty reply is unknown", null, SystemToggle.parseHaptics(""));
+
+        // --- clean memory --------------------------------------------------------
+        check("clean memory uses the verb that exists here",
+              "cmd activity kill-all", SystemToggle.cleanMemoryCommand());
+
+        // --- volume ---------------------------------------------------------------
+        // An index in [0..max], not a fraction. Unlike brightness, 0 is a
+        // legitimate setting.
+        check("volume clamps below zero", 0, SystemToggle.clampVolume(-3, 15));
+        check("volume clamps above max", 15, SystemToggle.clampVolume(99, 15));
+        check("zero volume is allowed", 0, SystemToggle.clampVolume(0, 15));
+        check("volume percent at half", 47, SystemToggle.volumePercent(7, 15));
+        check("volume percent at max", 100, SystemToggle.volumePercent(15, 15));
+        check("volume percent at zero", 0, SystemToggle.volumePercent(0, 15));
+        // A stream reporting no range must not divide by zero.
+        check("a zero-range stream reports zero percent", 0, SystemToggle.volumePercent(5, 0));
+        check("a negative max clamps to zero", 0, SystemToggle.clampVolume(5, -1));
+
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");
         if (fail != 0) System.exit(1);

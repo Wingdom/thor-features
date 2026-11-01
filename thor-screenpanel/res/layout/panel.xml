@@ -36,6 +36,7 @@
 
             <include layout="@layout/brightness_row" android:id="@+id/bright_top" />
             <include layout="@layout/brightness_row" android:id="@+id/bright_bottom" />
+            <include layout="@layout/brightness_row" android:id="@+id/row_volume" />
         </LinearLayout>
 
         <LinearLayout
@@ -58,6 +59,8 @@
                 <include layout="@layout/quick_item" android:id="@+id/quick_fan" />
                 <include layout="@layout/quick_item" android:id="@+id/quick_stick" />
                 <include layout="@layout/quick_item" android:id="@+id/quick_move" />
+                <include layout="@layout/quick_item" android:id="@+id/quick_clean" />
+                <include layout="@layout/quick_item" android:id="@+id/quick_haptics" />
             </LinearLayout>
         </LinearLayout>
         <LinearLayout

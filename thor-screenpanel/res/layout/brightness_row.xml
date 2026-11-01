@@ -54,4 +54,47 @@
             android:src="@drawable/ic_brightness"
             android:contentDescription="@null" />
     </FrameLayout>
+
+    <!-- The refresh-rate switch for this screen. Hidden on the volume row,
+         which has no display to speak of. It sits here rather than in the
+         tile grid because it is a per-display control, like the slider it
+         follows: one row then answers everything about one panel. -->
+    <LinearLayout
+        android:id="@+id/hz_group"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginStart="10dp"
+        android:orientation="horizontal"
+        android:background="@drawable/hz_group">
+
+        <TextView
+            android:id="@+id/hz_low"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:minWidth="52dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:background="@drawable/hz_seg"
+            android:textColor="@color/hz_text"
+            android:textSize="12sp"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="@string/hz_low" />
+
+        <TextView
+            android:id="@+id/hz_high"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:minWidth="52dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:background="@drawable/hz_seg"
+            android:textColor="@color/hz_text"
+            android:textSize="12sp"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="@string/hz_high" />
+    </LinearLayout>
 </LinearLayout>

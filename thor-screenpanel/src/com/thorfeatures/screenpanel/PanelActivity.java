@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.graphics.Insets;
+import android.media.AudioManager;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
@@ -77,6 +78,7 @@ public final class PanelActivity extends Activity {
         if (shownOn != ScreenMode.TOP) bottomDisplay = shownOn;
 
         bindBrightness();
+        bindVolume();
         bindQuick();
 
         dualItem   = bind(R.id.mode_dual,   R.drawable.ic_mode_dual,   R.string.mode_dual,   Mode.DUAL);
@@ -158,9 +160,103 @@ public final class PanelActivity extends Activity {
         bindBrightnessRow(R.id.bright_bottom, R.string.bright_bottom, bottomDisplay);
     }
 
+    // --- refresh rate, per display -------------------------------------------
+    // Sits on each screen's own row rather than in the tile grid: the lever
+    // takes a display id, so it belongs with that display's brightness.
+    // Width and height come from the Display, never hardcoded - they differ
+    // between the two panels.
+
+    private void bindRefreshRate(View row, final int displayId) {
+        final TextView low  = row.findViewById(R.id.hz_low);
+        final TextView high = row.findViewById(R.id.hz_high);
+        low.setOnClickListener(v -> setRate(row, displayId, RefreshRate.LOW));
+        high.setOnClickListener(v -> setRate(row, displayId, RefreshRate.HIGH));
+    }
+
+    /** Physical size of a display, for the set-mode command. */
+    private int[] sizeOf(int displayId) {
+        android.hardware.display.DisplayManager dm =
+                getSystemService(android.hardware.display.DisplayManager.class);
+        android.view.Display d = dm.getDisplay(displayId);
+        if (d == null) return null;
+        android.view.Display.Mode m = d.getMode();
+        return new int[] { m.getPhysicalWidth(), m.getPhysicalHeight() };
+    }
+
+    private void setRate(final View row, final int displayId, final int rate) {
+        renderRate(row, rate);                     // immediate feedback
+        io.execute(() -> {
+            int[] wh = sizeOf(displayId);
+            if (wh == null) return;
+            root.run(RefreshRate.setCommand(displayId, wh[0], wh[1], rate));
+            int actual = RefreshRate.parse(root.run(RefreshRate.getCommand(displayId)).out);
+            ui.post(() -> renderRate(row, actual));
+        });
+    }
+
+    private void renderRate(View row, int rate) {
+        row.findViewById(R.id.hz_low).setSelected(rate == RefreshRate.LOW);
+        row.findViewById(R.id.hz_high).setSelected(rate == RefreshRate.HIGH);
+    }
+
+    private void refreshRates() {
+        io.execute(() -> {
+            final int top = RefreshRate.parse(root.run(RefreshRate.getCommand(Brightness.TOP)).out);
+            final int bot = RefreshRate.parse(root.run(RefreshRate.getCommand(bottomDisplay)).out);
+            ui.post(() -> {
+                renderRate(findViewById(R.id.bright_top), top);
+                renderRate(findViewById(R.id.bright_bottom), bot);
+            });
+        });
+    }
+
+    // --- volume ---------------------------------------------------------------
+    // The one control here that needs no root at all: AudioManager is an
+    // ordinary app API. There is a single slider because `dumpsys audio`
+    // reports a single output device - the two screens share one speaker.
+
+    private AudioManager audio;
+
+    private void bindVolume() {
+        audio = getSystemService(AudioManager.class);
+        View row = findViewById(R.id.row_volume);
+        ((TextView) row.findViewById(R.id.bright_label)).setText(R.string.row_volume);
+        ((ImageView) row.findViewById(R.id.bright_icon)).setImageResource(R.drawable.ic_volume);
+        row.findViewById(R.id.hz_group).setVisibility(View.GONE);
+
+        final int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        SeekBar bar = row.findViewById(R.id.bright_bar);
+        bar.setMax(Math.max(max, 1));
+        bar.setProgress(SystemToggle.clampVolume(
+                audio.getStreamVolume(AudioManager.STREAM_MUSIC), max));
+        tintVolumeIcon(row, bar.getProgress(), max);
+
+        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (!fromUser) return;
+                // Volume is cheap and local - no process, no root - so unlike
+                // brightness this one can follow the finger.
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC,
+                        SystemToggle.clampVolume(progress, max), 0);
+                tintVolumeIcon(row, progress, max);
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) { }
+            @Override public void onStopTrackingTouch(SeekBar sb) { }
+        });
+    }
+
+    private void tintVolumeIcon(View row, int index, int max) {
+        ImageView icon = row.findViewById(R.id.bright_icon);
+        boolean onFill = Brightness.iconOnFill(
+                max > 0 ? Math.round(index * 100f / max) : 0);
+        icon.setImageTintList(getColorStateList(
+                onFill ? R.color.bright_icon_on_fill : R.color.bright_icon_on_track));
+    }
+
     private void bindBrightnessRow(int rowId, int labelRes, int displayId) {
         final View row = findViewById(rowId);
         ((TextView) row.findViewById(R.id.bright_label)).setText(labelRes);
+        bindRefreshRate(row, displayId);
         SeekBar bar = row.findViewById(R.id.bright_bar);
 
         bar.setMax(Brightness.STEPS);
@@ -239,6 +335,8 @@ public final class PanelActivity extends Activity {
     private void bindQuick() {
         bindCycle(R.id.quick_fan,   R.drawable.ic_quick_fan,   R.string.quick_fan,   fanSetting);
         bindCycle(R.id.quick_stick, R.drawable.ic_quick_stick, R.string.quick_stick, stickSetting);
+        bindCleanMemory();
+        bindHaptics();
 
         // Move-app is an action, not a cycle: there is no state to display and
         // nothing to step through, so it gets a hint line instead.
@@ -266,6 +364,52 @@ public final class PanelActivity extends Activity {
                 }
             });
         }));
+    }
+
+    // Stock's "Clean Memory" tile. One shot, no state to show.
+    private void bindCleanMemory() {
+        LinearLayout item = findViewById(R.id.quick_clean);
+        ((ImageView) item.findViewById(R.id.icon)).setImageResource(R.drawable.ic_quick_clean);
+        ((TextView)  item.findViewById(R.id.label)).setText(R.string.quick_clean);
+        ((TextView)  item.findViewById(R.id.state)).setText("");
+        item.setOnClickListener(v -> io.execute(() -> {
+            boolean ok = root.run(SystemToggle.cleanMemoryCommand()).code == 0;
+            ui.post(() -> {
+                if (ok) Toast.makeText(this, R.string.cleaned, Toast.LENGTH_SHORT).show();
+            });
+        }));
+    }
+
+    // Haptics. Stock drove `vibrate_on`, which does not exist on this build -
+    // it reads null. `haptic_feedback_enabled` is the live key.
+    private void bindHaptics() {
+        LinearLayout item = findViewById(R.id.quick_haptics);
+        ((ImageView) item.findViewById(R.id.icon)).setImageResource(R.drawable.ic_quick_haptics);
+        ((TextView)  item.findViewById(R.id.label)).setText(R.string.quick_haptics);
+        item.setOnClickListener(v -> io.execute(() -> {
+            Boolean now = SystemToggle.parseHaptics(
+                    root.run(SystemToggle.hapticsGetCommand()).out);
+            // Unknown is not off: default to turning them ON rather than
+            // silently disabling haptics for someone who had them enabled.
+            boolean target = (now == null) || !now;
+            root.run(SystemToggle.hapticsSetCommand(target));
+            Boolean after = SystemToggle.parseHaptics(
+                    root.run(SystemToggle.hapticsGetCommand()).out);
+            ui.post(() -> renderHaptics(after));
+        }));
+    }
+
+    private void renderHaptics(Boolean on) {
+        LinearLayout item = findViewById(R.id.quick_haptics);
+        TextView state = item.findViewById(R.id.state);
+        View icon = item.findViewById(R.id.icon);
+        if (on == null) {
+            state.setText(R.string.quick_unavailable);
+            icon.setSelected(false);
+            return;
+        }
+        state.setText(on ? R.string.haptics_on : R.string.haptics_off);
+        icon.setSelected(on);
     }
 
     private void bindCycle(int itemId, int iconRes, int labelRes, QuickSetting q) {
@@ -305,9 +449,12 @@ public final class PanelActivity extends Activity {
         io.execute(() -> {
             String fanState = root.quickState(fanSetting);
             String stickState = root.quickState(stickSetting);
+            final Boolean haptics = SystemToggle.parseHaptics(
+                    root.run(SystemToggle.hapticsGetCommand()).out);
             ui.post(() -> {
                 renderQuick(R.id.quick_fan, fanSetting, fanState);
                 renderQuick(R.id.quick_stick, stickSetting, stickState);
+                renderHaptics(haptics);
             });
         });
     }
@@ -329,6 +476,7 @@ public final class PanelActivity extends Activity {
         });
         refreshQuick();
         refreshBrightness();
+        refreshRates();
     }
 
     private void markSelected(Mode m) {
