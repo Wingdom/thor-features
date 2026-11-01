@@ -99,9 +99,20 @@ public final class RootClient {
      *
      * @return the command that failed, or null if all of them succeeded.
      */
-    public String apply(List<String> commands) {
+    public String apply(List<String> commands) { return apply(commands, null); }
+
+    /**
+     * As {@link #apply(List)}, but also hands back the failing command's
+     * output in {@code outHolder[0]} so the caller can show the reason
+     * rather than a generic failure.
+     */
+    public String apply(List<String> commands, String[] outHolder) {
         for (String c : commands) {
-            if (run(c).code != 0) return c;
+            Result r = run(c);
+            if (r.code != 0) {
+                if (outHolder != null && outHolder.length > 0) outHolder[0] = r.out;
+                return c;
+            }
         }
         return null;
     }

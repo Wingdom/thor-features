@@ -44,6 +44,7 @@ javac --release 17 -nowarn -d out/test \
     "src/$PKG_PATH/QuickSetting.java" "src/$PKG_PATH/QuickSettings.java" \
     "src/$PKG_PATH/Brightness.java" "src/$PKG_PATH/RootProtocol.java" \
     "src/$PKG_PATH/RefreshRate.java" "src/$PKG_PATH/SystemToggle.java" \
+    "src/$PKG_PATH/CliMessage.java" \
     "test/$PKG_PATH/TestMain.java" || { echo "test compile failed"; exit 1; }
 java -cp out/test com.thorfeatures.screenpanel.TestMain || { echo "build aborted: unit tests failed"; exit 1; }
 ./tests/test_action.sh || { echo "build aborted: action script tests failed"; exit 1; }

@@ -710,6 +710,47 @@ public final class TestMain {
         check("a zero-range stream reports zero percent", 0, SystemToggle.volumePercent(5, 0));
         check("a negative max clamps to zero", 0, SystemToggle.clampVolume(5, -1));
 
+        // --- surfacing a CLI's refusal ------------------------------------------
+        // The bug this exists for: stickfx refused with four clear lines and
+        // the panel showed nothing, so a button that explains itself and a
+        // dead button looked identical. Captured verbatim from the device
+        // 2026-11-01.
+        String stickRefusal =
+            "! every stick LED colour is \"0 0 0\", so a charging trigger\n" +
+            "! would drive an invisible LED.\n" +
+            "!\n" +
+            "! Either configure colours in Settings -> AYN -> RGB lighting\n" +
+            "! (AynParts owns the colour channel), or pass a colour here:\n" +
+            "!     stickfx charge --color 2BE0D8\n";
+        check("the real refusal becomes one readable sentence",
+              "Every stick LED colour is \"0 0 0\", so a charging trigger would drive an invisible LED.",
+              CliMessage.summarize(stickRefusal));
+
+        // The blank "!" line ends the summary: what follows is the long
+        // how-to-fix detail, which belongs in the CLI's output, not a toast.
+        check("the fix-it paragraph is left out", true,
+              !CliMessage.summarize(stickRefusal).contains("Settings"));
+
+        check("a plain one-line error is used as-is",
+              "No second screen found", CliMessage.summarize("no second screen found"));
+        check("the marker is stripped",
+              "Refusing: the top screen is already off",
+              CliMessage.summarize("! refusing: the top screen is already off"));
+
+        // Null means "say something generic", never "say nothing".
+        check("empty output has no message", null, CliMessage.summarize(""));
+        check("null output has no message", null, CliMessage.summarize(null));
+        check("whitespace only has no message", null, CliMessage.summarize("  \n \n"));
+        check("bare markers have no message", null, CliMessage.summarize("!\n!\n"));
+
+        // A toast cannot show a wall of text.
+        StringBuilder longOut = new StringBuilder("! ");
+        for (int i = 0; i < 80; i++) longOut.append("verylongwordhere ");
+        String trimmed = CliMessage.summarize(longOut.toString());
+        check("an overlong message is trimmed", true, trimmed.length() <= CliMessage.MAX + 1);
+        check("and ends with an ellipsis rather than mid-word", true, trimmed.endsWith("\u2026"));
+        check("and does not cut inside a word", true, !trimmed.contains("verylongwordher\u2026"));
+
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");
         if (fail != 0) System.exit(1);

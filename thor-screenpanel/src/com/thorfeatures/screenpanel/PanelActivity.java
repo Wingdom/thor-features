@@ -351,16 +351,18 @@ public final class PanelActivity extends Activity {
         ((TextView)  move.findViewById(R.id.label)).setText(R.string.quick_move);
         ((TextView)  move.findViewById(R.id.state)).setText(R.string.quick_move_hint);
         move.setOnClickListener(v -> io.execute(() -> {
-            boolean ok = root.run(PanelCommands.SCREENMOVE + " toggle").code == 0;
+            RootClient.Result r = root.run(PanelCommands.SCREENMOVE + " toggle");
             ui.post(() -> {
-                if (ok) {
+                if (r.code == 0) {
                     // A successful move fronts the task, so the panel is no
                     // longer what the user is looking at. Get out of the way.
                     finish();
                 } else {
-                    // Left open on purpose: closing the panel after nothing
-                    // visibly happened reads as the tap being ignored.
-                    ((TextView) move.findViewById(R.id.state)).setText(R.string.quick_move_none);
+                    // Left open on purpose, and now saying why: screenmove
+                    // explains itself ("nothing to move: no visible app on
+                    // either screen") and dropping that was what made this
+                    // button look dead.
+                    explain(r.out);
                 }
             });
         }));
@@ -373,9 +375,10 @@ public final class PanelActivity extends Activity {
         ((TextView)  item.findViewById(R.id.label)).setText(R.string.quick_clean);
         ((TextView)  item.findViewById(R.id.state)).setText("");
         item.setOnClickListener(v -> io.execute(() -> {
-            boolean ok = root.run(SystemToggle.cleanMemoryCommand()).code == 0;
+            RootClient.Result r = root.run(SystemToggle.cleanMemoryCommand());
             ui.post(() -> {
-                if (ok) Toast.makeText(this, R.string.cleaned, Toast.LENGTH_SHORT).show();
+                if (r.code == 0) Toast.makeText(this, R.string.cleaned, Toast.LENGTH_SHORT).show();
+                else explain(r.out);
             });
         }));
     }
@@ -392,10 +395,13 @@ public final class PanelActivity extends Activity {
             // Unknown is not off: default to turning them ON rather than
             // silently disabling haptics for someone who had them enabled.
             boolean target = (now == null) || !now;
-            root.run(SystemToggle.hapticsSetCommand(target));
+            RootClient.Result r = root.run(SystemToggle.hapticsSetCommand(target));
             Boolean after = SystemToggle.parseHaptics(
                     root.run(SystemToggle.hapticsGetCommand()).out);
-            ui.post(() -> renderHaptics(after));
+            ui.post(() -> {
+                renderHaptics(after);
+                if (r.code != 0) explain(r.out);
+            });
         }));
     }
 
@@ -412,6 +418,21 @@ public final class PanelActivity extends Activity {
         icon.setSelected(on);
     }
 
+    /**
+     * Show a failing command's own explanation.
+     *
+     * These CLIs refuse with a reason -- stickfx will tell you the LED colour
+     * is black, screenmove that there is nothing to move -- and the panel used
+     * to drop all of it and redraw the unchanged state. A button that explains
+     * itself and a dead button looked identical, which is exactly how the
+     * stick LEDs were reported broken on 2026-11-01 when nothing was broken.
+     */
+    private void explain(String out) {
+        String msg = CliMessage.summarize(out);
+        Toast.makeText(this, msg != null ? msg : getString(R.string.failed),
+                msg != null ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
+    }
+
     private void bindCycle(int itemId, int iconRes, int labelRes, QuickSetting q) {
         LinearLayout item = findViewById(itemId);
         ((ImageView) item.findViewById(R.id.icon)).setImageResource(iconRes);
@@ -422,9 +443,12 @@ public final class PanelActivity extends Activity {
             // it while the panel is open.
             String current = root.quickState(q);
             String target = q.next(current);
-            root.quickSet(q, target);
+            RootClient.Result r = root.run(q.setCommand(target));
             String after = root.quickState(q);
-            ui.post(() -> renderQuick(itemId, q, after));
+            ui.post(() -> {
+                renderQuick(itemId, q, after);
+                if (r.code != 0) explain(r.out);
+            });
         }));
     }
 
@@ -505,10 +529,11 @@ public final class PanelActivity extends Activity {
             List<ScreenMode.Op> ops = PanelCommands.dropNoOpMoves(
                     ScreenMode.plan(target, bs.topDark, bs.bottomDark, bottomDisplay),
                     movable[0], movable[1]);
-            String failed = root.apply(PanelCommands.commandsFor(ops));
+            final String[] failedOut = new String[1];
+            String failed = root.apply(PanelCommands.commandsFor(ops), failedOut);
             ui.post(() -> {
                 if (failed != null) {
-                    Toast.makeText(this, R.string.failed, Toast.LENGTH_SHORT).show();
+                    explain(failedOut[0]);
                     refresh();                    // show what actually happened
                     return;
                 }
