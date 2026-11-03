@@ -1,6 +1,6 @@
 id=thor-screenmove
 name=Thor screen move (screenmove)
-version=v0.5.0
-versionCode=500
+version=v0.6.0
+versionCode=600
 author=local
-description=Move the foreground app between the AYN Thor's two screens. Adds a `screenmove` root command (status/toggle/to-top/to-bottom) wrapping `am display move-stack`, which needs the signature-level MANAGE_ACTIVITY_TASKS no ordinary app can hold. Never moves a launcher surface, including a dual-screen launcher's second-screen UI, which the task-type check alone does not catch. Writes no hardware node and no persistent state; every move is undone by a reboot. Disabling or uninstalling removes the command and changes nothing else - there is no boot-time behaviour.
+description=Move the foreground app between the AYN Thor's two screens. Adds a `screenmove` root command (status/toggle/to-top/to-bottom/swap) wrapping `am display move-stack`, which needs the signature-level MANAGE_ACTIVITY_TASKS no ordinary app can hold. Never moves a launcher surface, including a dual-screen launcher's second-screen UI, which the task-type check alone does not catch, and never a root task holding other tasks, which `move-stack` would drag across whole. Writes no hardware node and no persistent state; every move is undone by a reboot. Disabling or uninstalling removes the command and changes nothing else - there is no boot-time behaviour.

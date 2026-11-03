@@ -172,6 +172,106 @@ check "skip list does not prefix-match" \
       "50" "$(sh "$SCRIPT" _parse_stdin 0 " com.android.launcher3 " < "$tmp")"
 rm -f "$tmp"
 
+# --- leaf roots only ----------------------------------------------------------
+# `am display move-stack` moves a root task and everything inside it, so a root
+# holding child tasks would drag unrelated apps across with it. No recorded
+# fixture has a type=standard root with children - split screen appears as a
+# type=undefined SplitRoot, which the type check already drops - so these are
+# synthetic. The 21 cases above are the regression guard that this changes
+# nothing in real output.
+swap_plan() { sh "$SCRIPT" _swap_plan_stdin "$2" "${3-}" < "$FIX/$1"; }
+
+tmp=$(mktemp)
+cat > "$tmp" <<'EOF'
+Display #0 (activities from top to bottom):
+  * Task{aaa #60 type=standard A=10001:com.example.parent U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    * Task{bbb #61 type=standard A=10002:com.example.child U=0 rootTaskId=60 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+EOF
+check "a standard root with children is not movable" "" "$(sh "$SCRIPT" _parse_stdin 0 < "$tmp")"
+rm -f "$tmp"
+
+# The scan continues below a non-leaf root, exactly as it does past a launcher
+# package, rather than halting and calling the whole display unmovable.
+tmp=$(mktemp)
+cat > "$tmp" <<'EOF'
+Display #0 (activities from top to bottom):
+  * Task{aaa #62 type=standard A=10001:com.example.parent U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    * Task{bbb #63 type=standard A=10002:com.example.child U=0 rootTaskId=62 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+  * Task{ccc #64 type=standard A=10003:com.example.alone U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+EOF
+check "skips the non-leaf root and takes the leaf below it" "64" "$(sh "$SCRIPT" _parse_stdin 0 < "$tmp")"
+rm -f "$tmp"
+
+# A child named only in one of the repeated blocks further down still proves its
+# root is not a leaf, so the parent set is collected from the whole dump. The
+# opposite rule applies to candidates - see "ignores non-activity Display
+# blocks" above - and the two must not be confused.
+tmp=$(mktemp)
+cat > "$tmp" <<'EOF'
+Display #0 (activities from top to bottom):
+  * Task{aaa #65 type=standard A=10001:com.example.parent U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+WindowManager display contents
+Display #0 some other block:
+    * Task{bbb #66 type=standard A=10002:com.example.child U=0 rootTaskId=65 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+EOF
+check "a child seen only in a later block still disqualifies its root" \
+      "" "$(sh "$SCRIPT" _parse_stdin 0 < "$tmp")"
+rm -f "$tmp"
+
+# A nested child id must never be returned in its own right either.
+tmp=$(mktemp)
+cat > "$tmp" <<'EOF'
+Display #1 (activities from top to bottom):
+  * Task{aaa #67 type=undefined name=SplitRoot U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=2}
+    * Task{bbb #68 type=standard A=10002:com.example.left U=0 rootTaskId=67 visible=true visibleRequested=true mode=multi-window translucent=false sz=1}
+    * Task{ccc #69 type=standard A=10003:com.example.right U=0 rootTaskId=67 visible=true visibleRequested=true mode=multi-window translucent=false sz=1}
+EOF
+check "split screen offers nothing, not one of its halves" "" "$(sh "$SCRIPT" _parse_stdin 1 < "$tmp")"
+rm -f "$tmp"
+
+# --- swap planning ------------------------------------------------------------
+# `swap` resolves both task ids from one dumpsys read before issuing either
+# move. Two `toggle` runs cannot: the second re-reads, by which time the first
+# task sits on the destination and can be picked up and moved straight back.
+check "swap: both screens give an ordered pair" \
+      "261 262" "$(swap_plan app-on-display1.txt 1)"
+
+# A swap needs both ends. One app and one launcher is the idle state, exit 1,
+# the same contract `move` uses for nothing to move.
+check "swap: one screen only refuses" \
+      "nothing to swap: needs a movable app on both screens (top: 261, bottom: <none, launcher only>)" \
+      "$(swap_plan files-on-display0.txt 1)"
+swap_plan files-on-display0.txt 1 >/dev/null
+check "swap: refusing exits 1" "1" "$?"
+
+check "swap: idle refuses" \
+      "nothing to swap: needs a movable app on both screens (top: <none, launcher only>, bottom: <none, launcher only>)" \
+      "$(swap_plan idle-stock-launcher.txt 1)"
+
+# Cocoon on both panels: both ends are launcher surfaces, so there is no swap
+# to make. Without the skip list the bottom still offers task #38, and the
+# refusal then comes from the top being launcher-only - a swap needs both.
+check "swap: cocoon on both panels refuses" \
+      "nothing to swap: needs a movable app on both screens (top: <none, launcher only>, bottom: <none, launcher only>)" \
+      "$(swap_plan cocoon-both-screens.txt 1 "com.android.launcher3 rip.moth.cocoonshell")"
+check "swap: cocoon without the skip list still refuses on the top" \
+      "nothing to swap: needs a movable app on both screens (top: <none, launcher only>, bottom: 38)" \
+      "$(swap_plan cocoon-both-screens.txt 1)"
+
+# The leaf-root rule reaches the swap planner too, because it shares the parser.
+tmp=$(mktemp)
+cat > "$tmp" <<'EOF'
+Display #0 (activities from top to bottom):
+  * Task{aaa #70 type=standard A=10001:com.example.parent U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+    * Task{bbb #71 type=standard A=10002:com.example.child U=0 rootTaskId=70 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+Display #1 (activities from top to bottom):
+  * Task{ccc #72 type=standard A=10003:com.example.app U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+EOF
+check "swap: a non-leaf root on one screen cancels the pair" \
+      "nothing to swap: needs a movable app on both screens (top: <none, launcher only>, bottom: 72)" \
+      "$(sh "$SCRIPT" _swap_plan_stdin 1 < "$tmp")"
+rm -f "$tmp"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -44,6 +44,7 @@
 #         screenmove toggle      [--dry-run]
 #         screenmove to-top      [--dry-run]
 #         screenmove to-bottom   [--dry-run]
+#         screenmove swap        [--dry-run]
 #
 # Safety:
 #   This writes no hardware node and no persistent state. It issues one
@@ -128,14 +129,32 @@ filter_launchers() {
 #   3. The header must be matched as `^Display #N (activities`, because later
 #      parts of the same dump repeat per-display blocks under other headers.
 #      Matching loosely picks up those and returns stale ids.
+#   4. A root task must hold nothing but itself. `move-stack` moves a root and
+#      everything inside it, so a root with child tasks would drag unrelated
+#      apps across with it. Split screen is already excluded by its
+#      `type=undefined` SplitRoot, but that is one arrangement, not a rule, so
+#      the shape is rejected rather than the name. No recorded fixture has a
+#      `type=standard` root with children, so this changes nothing observed -
+#      it closes the hole rather than fixing a seen bug. A non-leaf root is
+#      simply not eligible; the scan continues below it, exactly as it does
+#      for a launcher package.
 parse_movable() {
     awk -v want="$1" -v skip="${2-$SKIP_PKGS}" '
+      # Any task naming a parent proves that parent is not a leaf. Collected
+      # from the whole dump, including the repeated blocks further down: a
+      # child listed only there still means its root holds more than itself.
+      # `rootTaskId=` appears on no other kind of line - checked against every
+      # fixture.
+      /rootTaskId=[0-9]+/ {
+          if (match($0, /rootTaskId=[0-9]+/))
+              parent[substr($0, RSTART + 11, RLENGTH - 11)] = 1
+      }
       /^Display #[0-9]+ \(activities/ {
           d = $2; sub(/^#/, "", d); cur = d; insec = 1; next
       }
       /^[A-Za-z]/ && !/^Display #/ { insec = 0 }
       insec && /^  \* Task\{/ {
-          if (cur != want || found != "") next
+          if (cur != want) next
           type = ""; vis = ""; pkg = ""
           if (match($0, /type=[a-z]+/))          type = substr($0, RSTART+5, RLENGTH-5)
           if (match($0, /visible=(true|false)/)) vis  = substr($0, RSTART+8, RLENGTH-8)
@@ -148,10 +167,16 @@ parse_movable() {
               pkg = substr($0, RSTART+2, RLENGTH-3)
           }
           if (pkg != "" && index(skip, " " pkg " ") > 0) next
+          # Candidates are collected in dump order and resolved at END, because
+          # the children of a root are listed after it: whether this one is a
+          # leaf is not yet known here.
           if (type == "standard" && vis == "true" && match($0, /#[0-9]+/))
-              found = substr($0, RSTART+1, RLENGTH-1)
+              cand[++n] = substr($0, RSTART+1, RLENGTH-1)
       }
-      END { if (found != "") print found }'
+      END {
+          for (i = 1; i <= n; i++)
+              if (!(cand[i] in parent)) { print cand[i]; exit }
+      }'
 }
 
 focused_display() {
@@ -252,6 +277,67 @@ cmd_toggle() {
     fi
 }
 
+# swap_plan <bottom display> [skip list]
+# Reads dumpsys text on stdin. Prints "<top task> <bottom task>" when both
+# screens hold a movable app; otherwise prints the idle line and returns 1.
+#
+# Split out so the plan is host-testable, and so both ids come from *one*
+# dumpsys read. Running `toggle` twice does not have that property: it re-reads
+# between the two moves, and by then the first task is already on the
+# destination display, so the second read can pick it up again and move it
+# straight back. The ids are resolved before either move is issued.
+swap_plan() {
+    _b=$1
+    _acts=$(cat)
+    _t=$(printf '%s\n' "$_acts" | parse_movable "$TOP_DISPLAY" "${2-$SKIP_PKGS}")
+    _o=$(printf '%s\n' "$_acts" | parse_movable "$_b" "${2-$SKIP_PKGS}")
+    if [ -z "$_t" ] || [ -z "$_o" ]; then
+        echo "nothing to swap: needs a movable app on both screens" \
+             "(top: ${_t:-<none, launcher only>}," \
+             "bottom: ${_o:-<none, launcher only>})"
+        return 1
+    fi
+    echo "$_t $_o"
+}
+
+cmd_swap() {
+    dry=${1:-}
+    bottom=$(bottom_display)
+    [ -n "$bottom" ] || die "could not find a second internal display"
+
+    if ! plan=$(dumpsys activity activities 2>/dev/null | swap_plan "$bottom"); then
+        echo "$plan"
+        return 1
+    fi
+    top_task=${plan% *}
+    bot_task=${plan#* }
+
+    if [ -n "$dry" ]; then
+        echo "would swap task #$top_task on display $TOP_DISPLAY" \
+             "with task #$bot_task on display $bottom"
+        return 0
+    fi
+
+    am display move-stack "$top_task" "$bottom" >/dev/null 2>&1
+    am display move-stack "$bot_task" "$TOP_DISPLAY" >/dev/null 2>&1
+
+    # Verify both ends rather than trusting either exit code; `am` reports
+    # success for a call the window manager then declines. A half-finished swap
+    # is reported as a failure, and deliberately not rolled back: a second
+    # guessed move on top of a declined one is how an app ends up stranded.
+    after=$(dumpsys activity activities 2>/dev/null)
+    now_top=$(printf '%s\n' "$after" | parse_movable "$TOP_DISPLAY")
+    now_bot=$(printf '%s\n' "$after" | parse_movable "$bottom")
+    if [ "$now_top" = "$bot_task" ] && [ "$now_bot" = "$top_task" ]; then
+        echo "swapped task #$top_task to display $bottom" \
+             "and task #$bot_task to display $TOP_DISPLAY"
+        return 0
+    fi
+    echo "swap did not take effect (top: ${now_top:-<none>}," \
+         "bottom: ${now_bot:-<none>})" >&2
+    return 1
+}
+
 usage() {
     cat <<'EOF'
 screenmove - move the foreground app between the Thor's two screens
@@ -260,6 +346,7 @@ screenmove - move the foreground app between the Thor's two screens
   screenmove toggle    [--dry-run]  move the focused screen's app to the other
   screenmove to-top    [--dry-run]  move the bottom screen's app to the top
   screenmove to-bottom [--dry-run]  move the top screen's app to the bottom
+  screenmove swap      [--dry-run]  exchange the two screens' apps
 
 Needs root. Moves nothing persistent; a reboot undoes any move.
 EOF
@@ -278,6 +365,10 @@ fi
 if [ "$CMD" = "_launchers_stdin" ]; then
     filter_launchers
     exit 0
+fi
+if [ "$CMD" = "_swap_plan_stdin" ]; then
+    swap_plan "${1:-1}" " ${2:-} "
+    exit $?
 fi
 
 # Resolved once per invocation, after the test entry point has returned so
@@ -298,6 +389,7 @@ case "$CMD" in
   toggle)     cmd_toggle "$DRY" ;;
   to-top)     move_to "$TOP_DISPLAY" "$DRY" ;;
   to-bottom)  b=$(bottom_display); [ -n "$b" ] || die "no second display"; move_to "$b" "$DRY" ;;
+  swap)       cmd_swap "$DRY" ;;
   ""|-h|--help|help) usage ;;
   *) usage; exit 2 ;;
 esac
