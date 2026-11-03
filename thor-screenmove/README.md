@@ -162,6 +162,14 @@ reported as a failure and **deliberately not rolled back** — a second guessed
 move on top of a declined one is how an app ends up stranded on the wrong
 screen.
 
+Verified on hardware 2026-11-03, with Files on the top screen and Calculator on
+the bottom: both tasks exchanged displays, the round trip restored the exact
+baseline, and **both pids were unchanged throughout** — these are genuine task
+moves, not relaunches, so an app keeps whatever state it held. Both refusals
+(idle, and one app only) exited `1` with the expected wording. The failure path
+for a *declined* move has not been exercised; there is no way to provoke one on
+demand, which is also why it does not try to roll back.
+
 The QS tile's observed "two apps effectively swap places" behaviour, recorded in
 the tile README, is the emergent result of the `toggle` rules and is unchanged.
 `swap` is the explicit version of it; nothing calls it yet.
