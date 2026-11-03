@@ -14,7 +14,7 @@ TARGET_SDK=37          # Android 17. Play Protect blocks installs targeting
 # Version. versionCode must be an integer and must only ever increase, because
 # Android refuses to install an APK whose code is lower than the installed one.
 # Derived from the semver so the two can never drift: 0.5.0 -> 500.
-VERSION=0.5.0
+VERSION=0.6.0
 VERSION_CODE=$(echo "$VERSION" | awk -F. '{ printf "%d", $1*10000 + $2*100 + $3 }')
                        # older releases on this device.
 
