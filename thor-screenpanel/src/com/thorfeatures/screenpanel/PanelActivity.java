@@ -7,17 +7,21 @@ import android.os.Handler;
 import android.os.Looper;
 import android.graphics.Insets;
 import android.media.AudioManager;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -80,6 +84,7 @@ public final class PanelActivity extends Activity {
         bindBrightness();
         bindVolume();
         bindQuick();
+        bindTabs();
 
         dualItem   = bind(R.id.mode_dual,   R.drawable.ic_mode_dual,   R.string.mode_dual,   Mode.DUAL);
         topItem    = bind(R.id.mode_top,    R.drawable.ic_mode_top,    R.string.mode_top,    Mode.TOP_ONLY);
@@ -418,6 +423,224 @@ public final class PanelActivity extends Activity {
         icon.setSelected(on);
     }
 
+    // --- the telemetry tab ---------------------------------------------------
+
+    /**
+     * Resolved paths for the gauges, or null until the tab is first opened.
+     *
+     * <b>Discovery is lazy on purpose.</b> It is one more root command, and
+     * the panel's open cost is a number this project worked hard to get down -
+     * from ~1413 ms to ~587 ms, by deleting a duplicate `screenblank status`
+     * and removing forks from it. Paying a discovery grep on every open would
+     * spend part of that back for a tab most opens never look at. The cost
+     * lands on the first tap of "Telemetry" instead, where the user has asked
+     * for it and is waiting for something to appear anyway.
+     */
+    private Telemetry.Layout telemetryLayout;
+
+    /** Which tab is in front. Controls, until the user says otherwise. */
+    private boolean telemetrySelected;
+
+    /** Whether the activity is resumed. Half of the polling condition. */
+    private boolean resumed;
+
+    /** Whether a tick is currently scheduled. */
+    private boolean polling;
+
+    /** Gauge key to its inflated row, so a tick updates rather than rebuilds. */
+    private final Map<String, View> gaugeRows = new LinkedHashMap<>();
+
+    /** The layer FPS is being read from, and whether that ever worked. */
+    private String fpsLayer;
+    private boolean fpsAvailable;
+
+    private void bindTabs() {
+        findViewById(R.id.tab_controls).setOnClickListener(v -> selectTab(false));
+        findViewById(R.id.tab_telemetry).setOnClickListener(v -> selectTab(true));
+        selectTab(false);
+    }
+
+    /**
+     * Switch tabs.
+     *
+     * Mode is not touched here. It is outside the tabs and stays on screen in
+     * both, nearest the AYN button, which is the arrangement the layout
+     * comment forbids changing.
+     */
+    private void selectTab(boolean telemetry) {
+        telemetrySelected = telemetry;
+        findViewById(R.id.tab_controls).setSelected(!telemetry);
+        findViewById(R.id.tab_telemetry).setSelected(telemetry);
+        findViewById(R.id.card_bright).setVisibility(telemetry ? View.GONE : View.VISIBLE);
+        findViewById(R.id.card_quick).setVisibility(telemetry ? View.GONE : View.VISIBLE);
+        findViewById(R.id.card_telemetry).setVisibility(telemetry ? View.VISIBLE : View.GONE);
+        updatePolling();
+    }
+
+    /**
+     * Start or stop ticking to match the current state.
+     *
+     * Idempotent, because it is called from tab switches and from the
+     * lifecycle both, and the two can arrive in either order.
+     */
+    private void updatePolling() {
+        boolean want = Telemetry.shouldPoll(telemetrySelected, resumed);
+        if (want == polling) return;
+        polling = want;
+        if (!want) {
+            ui.removeCallbacks(tick);
+            return;
+        }
+        if (telemetryLayout == null) discoverTelemetry();
+        else ui.post(tick);
+    }
+
+    /** Resolve every path once, then start ticking. */
+    private void discoverTelemetry() {
+        io.execute(() -> {
+            RootClient.Result d = root.run(Telemetry.discoverCommand());
+            final Telemetry.Layout l = Telemetry.parseDiscovery(d.out);
+            probeFps(l);
+            ui.post(() -> {
+                telemetryLayout = l;
+                buildGauges(l);
+                if (polling) ui.post(tick);
+            });
+        });
+    }
+
+    /**
+     * One tick: read everything, render, then schedule the next.
+     *
+     * <b>Rescheduled after the reply, not on a fixed period.</b> A
+     * {@code postDelayed} loop that fired every second regardless would queue
+     * reads behind each other the moment one took longer than the interval,
+     * and the queue would never drain - the panel's brightness slider already
+     * avoids the same shape by sending on release instead of per pixel,
+     * because "a set per pixel would queue dozens of `su` processes". Here the
+     * effect is self-limiting instead: a slow device ticks more slowly rather
+     * than falling behind forever.
+     */
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            final Telemetry.Layout l = telemetryLayout;
+            if (!polling || l == null) return;
+            io.execute(() -> {
+                RootClient.Result r = root.run(Telemetry.tickCommand(l));
+                final Telemetry.Readings readings = Telemetry.parseTick(r.out, l);
+                final Fps.Sample fps = sampleFps();
+                ui.post(() -> {
+                    renderGauges(l, readings, fps);
+                    if (polling) ui.postDelayed(tick, Telemetry.TICK_MS);
+                });
+            });
+        }
+    };
+
+    /** Build one row per gauge the device turned out to have. */
+    private void buildGauges(Telemetry.Layout l) {
+        LinearLayout left  = findViewById(R.id.gauge_col_left);
+        LinearLayout right = findViewById(R.id.gauge_col_right);
+        left.removeAllViews();
+        right.removeAllViews();
+        gaugeRows.clear();
+
+        if (l.isEmpty()) {
+            findViewById(R.id.gauge_empty).setVisibility(View.VISIBLE);
+            return;
+        }
+        findViewById(R.id.gauge_empty).setVisibility(View.GONE);
+
+        List<String> keys = Telemetry.gaugeKeys(l, fpsAvailable);
+        int split = Telemetry.leftColumnCount(keys.size());
+        LayoutInflater inf = LayoutInflater.from(this);
+        for (int i = 0; i < keys.size(); i++) {
+            String key = keys.get(i);
+            LinearLayout col = i < split ? left : right;
+            View row = inf.inflate(R.layout.gauge_row, col, false);
+            ((TextView) row.findViewById(R.id.gauge_label)).setText(Telemetry.gaugeLabel(key));
+            ((TextView) row.findViewById(R.id.gauge_value)).setText(Telemetry.NONE);
+            col.addView(row);
+            gaugeRows.put(key, row);
+        }
+    }
+
+    private void renderGauges(Telemetry.Layout l, Telemetry.Readings r, Fps.Sample fps) {
+        for (Map.Entry<String, View> e : gaugeRows.entrySet()) {
+            View row = e.getValue();
+            ((TextView) row.findViewById(R.id.gauge_value))
+                    .setText(Telemetry.gaugeValue(e.getKey(), r, fps));
+            ProgressBar bar = row.findViewById(R.id.gauge_bar);
+            int pct = Telemetry.gaugePercent(e.getKey(), r, fps, l);
+            // INVISIBLE, not GONE: a gauge with no meaningful ceiling (the GPU,
+            // battery watts) still has to leave the value column where the
+            // rows above and below put it.
+            bar.setVisibility(pct < 0 ? View.INVISIBLE : View.VISIBLE);
+            if (pct >= 0) bar.setProgress(pct);
+        }
+    }
+
+    // --- phase 2: FPS --------------------------------------------------------
+
+    /**
+     * Find out whether a frame counter is possible at all, once.
+     *
+     * Phase 2 is an investigation, so this is a probe and not a feature: if it
+     * comes back with nothing, {@code fpsAvailable} stays false, no FPS row is
+     * built, and the rest of the telemetry tab is unaffected. The alternative
+     * - a row that always reads em dash - is the "looked alive and did
+     * nothing" failure this panel has already been bitten by.
+     *
+     * Runs on the io thread as part of discovery, because it is three
+     * `dumpsys` calls and `screenmove status` spends ~120 ms in three of them.
+     */
+    private void probeFps(Telemetry.Layout l) {
+        fpsLayer = resolveFpsLayer();
+        if (fpsLayer == null) return;
+        Fps.Sample s = readFps(fpsLayer);
+        fpsAvailable = s.fps != Fps.ABSENT;
+    }
+
+    /**
+     * The layer carrying the game's frames, or null.
+     *
+     * Focus is read for the TOP display specifically. The panel is itself a
+     * focused window while it is open - on the bottom screen, taking taps - so
+     * "the focused package" without a display is the panel, and a counter
+     * built on that would measure this card.
+     */
+    private String resolveFpsLayer() {
+        String pkg = Fps.parseFocusedPackageOnDisplay(
+                root.run(Fps.focusedPackageCommand()).out, ScreenMode.TOP);
+        if (pkg == null || pkg.equals(getPackageName())) return null;
+        return Fps.pickLayer(root.run(Fps.listCommand()).out, pkg);
+    }
+
+    private Fps.Sample readFps(String layer) {
+        String cmd = Fps.latencyCommand(layer);
+        if (cmd == null) return Fps.NO_SAMPLE;
+        return Fps.parseLatency(root.run(cmd).out);
+    }
+
+    /**
+     * This tick's frame rate, re-resolving the layer when it stops answering.
+     *
+     * The layer name is cached rather than looked up every tick, because the
+     * lookup is two `dumpsys` calls and the answer only changes when the user
+     * switches app. Going absent is the signal that it has changed, which
+     * makes the cache self-healing without a timer: one tick reads nothing,
+     * the next has re-resolved.
+     */
+    private Fps.Sample sampleFps() {
+        if (!fpsAvailable) return Fps.NO_SAMPLE;
+        if (fpsLayer != null) {
+            Fps.Sample s = readFps(fpsLayer);
+            if (s.fps != Fps.ABSENT) return s;
+        }
+        fpsLayer = resolveFpsLayer();
+        return fpsLayer == null ? Fps.NO_SAMPLE : readFps(fpsLayer);
+    }
+
     /**
      * Show a failing command's own explanation.
      *
@@ -557,6 +780,28 @@ public final class PanelActivity extends Activity {
      * read as the bottom screen having failed to turn on.
      */
     @Override
+    protected void onResume() {
+        super.onResume();
+        resumed = true;
+        updatePolling();
+    }
+
+    /**
+     * Stop ticking before anything else can.
+     *
+     * onPause rather than onStop, so the gauges stop reading hardware the
+     * moment the panel is no longer in front rather than once it is fully
+     * hidden. There is nothing to show in between, and a read issued on the
+     * way out would land after the activity had decided to finish.
+     */
+    @Override
+    protected void onPause() {
+        super.onPause();
+        resumed = false;
+        updatePolling();
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
         if (!isFinishing()) finish();
@@ -564,6 +809,10 @@ public final class PanelActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        // Drop any scheduled tick first: it would otherwise post work to an
+        // executor that is about to be shut down and a shell about to close.
+        polling = false;
+        ui.removeCallbacks(tick);
         // Close the shell before stopping the executor: a command in flight
         // holds the session's lock, and killing the thread under it would
         // leave a root process with no owner.

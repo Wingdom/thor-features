@@ -1,15 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Two stacked cards: a quick-settings row, and stock's "Mode" row.
+<!-- A tab strip, the selected tab's cards, and stock's "Mode" row.
 
      Mode sits at the BOTTOM, nearest the AYN button, at the user's request
      (2026-10-27) - it is the row reached most often and the one the button
      exists for. Do not reorder these again.
 
-     Stock's panel put its mode options and its quick-settings tiles on
-     separate tabs. These are one scrolling column instead, because the bottom
-     screen has the height spare and a tap to reach the fan is a tap the
-     physical button was supposed to save. The controls are the same either
-     way, so this can become tabs later without touching their logic. -->
+     Mode is deliberately NOT one of the tabs. Stock put its mode options and
+     its quick-settings tiles on separate tabs, and the earlier version of
+     this file was one scrolling column on the grounds that "a tap to reach
+     the fan is a tap the physical button was supposed to save". Telemetry
+     forced the question, because a gauge card is too tall to stack: there is
+     no longer room for everything at once.
+
+     The resolution is that the tabs switch only the upper content. Controls
+     and Telemetry take turns; Mode is always on screen, still at the bottom,
+     still one tap from the button. So the tab costs a tap to reach the
+     gauges - which nobody taps a button to see - and costs nothing to reach
+     Mode or the fan, which is what the 2026-10-27 request was about. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -23,6 +30,49 @@
         android:layout_marginEnd="26dp"
         android:layout_marginBottom="12dp"
         android:orientation="vertical">
+
+        <!-- The tab strip reuses the 60/120 switch's shapes rather than
+             introducing a third kind of selector. It is the same gesture -
+             pick one of two - so it should look the same. -->
+        <LinearLayout
+            android:id="@+id/tab_strip"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:background="@drawable/hz_group">
+
+            <TextView
+                android:id="@+id/tab_controls"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:minWidth="104dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/hz_seg"
+                android:textColor="@color/hz_text"
+                android:textSize="12sp"
+                android:clickable="true"
+                android:focusable="true"
+                android:text="@string/tab_controls" />
+
+            <TextView
+                android:id="@+id/tab_telemetry"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:minWidth="104dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/hz_seg"
+                android:textColor="@color/hz_text"
+                android:textSize="12sp"
+                android:clickable="true"
+                android:focusable="true"
+                android:text="@string/tab_telemetry" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/card_bright"
@@ -63,6 +113,20 @@
                 <include layout="@layout/quick_item" android:id="@+id/quick_haptics" />
             </LinearLayout>
         </LinearLayout>
+
+        <!-- The telemetry tab. Starts hidden: Controls is the tab the button
+             opens onto, because the button exists to change something. -->
+        <LinearLayout
+            android:id="@+id/card_telemetry"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/panel_card"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <include layout="@layout/telemetry_card" android:id="@+id/telemetry_body" />
+        </LinearLayout>
+
         <LinearLayout
             android:id="@+id/card"
             android:layout_width="match_parent"

@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 182 host tests + 17 action tests, then packages
+./build.sh      runs 333 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -155,9 +155,47 @@ exist on this build — it reads `null` — so this drives
 so a renamed state breaks the build instead of silently invoking an argument
 the CLI no longer accepts.
 
+**Telemetry** — live readings on their own tab: CPU clock, the hottest CPU
+core, chassis and USB temperature, fan duty, battery power and memory in use.
+Everything there is a read; nothing on that tab writes to the device.
+
 **Mode** — the three screen modes, kept at the bottom, nearest the button.
+
+## Two tabs, and Mode in neither
+
+**Controls** and **Telemetry** take turns. **Mode is outside both** and stays
+on screen whichever tab is showing, still at the bottom, still one tap from
+the AYN button.
+
+That is the point of the arrangement. The panel used to be one scrolling
+column, on the grounds that a tap to reach the fan is a tap the physical
+button was supposed to save. A gauge card is too tall to simply stack on the
+end of that, so something had to move behind a tab — and the right something
+is the readings, which nobody presses a button in order to look at.
+
+## What the telemetry tab can and cannot show
+
+| gauge | source |
+|---|---|
+| CPU clock | `scaling_cur_freq`, per cluster — three on this chip, not eight cores |
+| CPU / chassis / USB temperature | thermal zones, resolved by `type` |
+| Fan | `pwm1` duty, and the thermal governor's cooling state |
+| Power | `current_now` × `voltage_now`, with the direction taken from `status` |
+| RAM | `/proc/meminfo`, the one reading that needs no root |
+
+**There is no fan RPM.** The fan is the kernel's `pwm-fan` driver, and on this
+build it exposes a duty node and nothing else — there is no tachometer
+anywhere in `/sys`, so no frame of reference beyond duty and cooling state.
+
+**GPU clock may be missing.** Its sysfs directory is unreadable on this build
+even with root, so the row appears only when a readable node is found. It is
+left out rather than shown as zero, because a GPU reading 0 MHz looks like an
+idle GPU rather than an absent one.
+
+Readings refresh once a second, and only while the tab is actually in front.
 
 ## Not yet
 
-Stock's other tabs (Settings / Task / Application), the per-output volume
-sliders, and the 60/90/120 FPS control.
+A frame-rate counter, which needs the compositor rather than this process —
+see `docs/ayn-button-panel.md`. Stock's other tabs (Settings / Task /
+Application), the per-output volume sliders, and the 60/90/120 FPS control.

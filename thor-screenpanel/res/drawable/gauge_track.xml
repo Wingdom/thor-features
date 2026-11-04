@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A thin read-only bar for a telemetry gauge.
+
+     Deliberately much slimmer than the brightness track (6dp against 40dp).
+     The two must not be confusable: a brightness track is a control and
+     invites a drag, and a gauge is a reading that does nothing when touched.
+     Same palette, so they read as one panel; different weight, so they do not
+     read as the same kind of thing. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/bright_track_bg" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <solid android:color="@color/bright_track_fill" />
+                <corners android:radius="3dp" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

@@ -33,4 +33,8 @@
     <string name="launch_restarted">Button daemon was not running \u2014 restarted</string>
     <string name="launch_no_daemon">Could not start the button daemon \u2014 is thor-aynkey installed, and root granted?</string>
     <string name="launch_no_action">Daemon is running, but the panel would not open \u2014 run thor-screenpanel/install.sh</string>
+    <!-- The telemetry tab. -->
+    <string name="tab_controls">Controls</string>
+    <string name="tab_telemetry">Telemetry</string>
+    <string name="telemetry_none">Nothing readable \u2014 is root granted?</string>
 </resources>
