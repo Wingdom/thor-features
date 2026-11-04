@@ -447,8 +447,9 @@ public final class PanelActivity extends Activity {
     /** Whether a tick is currently scheduled. */
     private boolean polling;
 
-    /** Gauge key to its inflated row, so a tick updates rather than rebuilds. */
-    private final Map<String, View> gaugeRows = new LinkedHashMap<>();
+    /** Gauge key to its view, so a tick updates rather than rebuilds. */
+    private final Map<String, RingGauge> ringViews = new LinkedHashMap<>();
+    private final Map<String, View> barViews = new LinkedHashMap<>();
 
     /** The layer FPS is being read from, and whether that ever worked. */
     private String fpsLayer;
@@ -550,44 +551,93 @@ public final class PanelActivity extends Activity {
         }
     };
 
-    /** Build one row per gauge the device turned out to have. */
+    /** Build the ring row and the bar row from what discovery found. */
     private void buildGauges(Telemetry.Layout l) {
-        LinearLayout left  = findViewById(R.id.gauge_col_left);
-        LinearLayout right = findViewById(R.id.gauge_col_right);
-        left.removeAllViews();
-        right.removeAllViews();
-        gaugeRows.clear();
+        LinearLayout rings = findViewById(R.id.ring_row);
+        LinearLayout bars  = findViewById(R.id.bar_row);
+        rings.removeAllViews();
+        bars.removeAllViews();
+        ringViews.clear();
+        barViews.clear();
 
         if (l.isEmpty()) {
             findViewById(R.id.gauge_empty).setVisibility(View.VISIBLE);
+            rings.setVisibility(View.GONE);
+            bars.setVisibility(View.GONE);
             return;
         }
         findViewById(R.id.gauge_empty).setVisibility(View.GONE);
+        rings.setVisibility(View.VISIBLE);
+        bars.setVisibility(View.VISIBLE);
 
-        List<String> keys = Telemetry.gaugeKeys(l, fpsAvailable);
-        int split = Telemetry.leftColumnCount(keys.size());
+        // Rings share the width evenly, and each is as tall as the row. The
+        // view draws a circle on min(width, height), so a cell wider than it
+        // is tall still renders round.
+        int ringHeight = Math.round(112 * getResources().getDisplayMetrics().density);
+        for (String key : Telemetry.ringKeys(l)) {
+            RingGauge g = new RingGauge(this);
+            g.setLayoutParams(new LinearLayout.LayoutParams(0, ringHeight, 1f));
+            rings.addView(g);
+            ringViews.put(key, g);
+        }
+
         LayoutInflater inf = LayoutInflater.from(this);
-        for (int i = 0; i < keys.size(); i++) {
-            String key = keys.get(i);
-            LinearLayout col = i < split ? left : right;
-            View row = inf.inflate(R.layout.gauge_row, col, false);
-            ((TextView) row.findViewById(R.id.gauge_label)).setText(Telemetry.gaugeLabel(key));
-            ((TextView) row.findViewById(R.id.gauge_value)).setText(Telemetry.NONE);
-            col.addView(row);
-            gaugeRows.put(key, row);
+        for (String key : Telemetry.barKeys(l)) {
+            View tile = inf.inflate(R.layout.gauge_tile, bars, false);
+            ((TextView) tile.findViewById(R.id.tile_label)).setText(Telemetry.gaugeLabel(key));
+            ((TextView) tile.findViewById(R.id.tile_value)).setText(Telemetry.NONE);
+            ProgressBar bar = tile.findViewById(R.id.tile_bar);
+            bar.setProgressTintList(getColorStateList(colorRes(key)));
+            bars.addView(tile);
+            barViews.put(key, tile);
+        }
+    }
+
+    /**
+     * Each metric's colour.
+     *
+     * Fixed hues rather than the Material You palette, which is the one place
+     * this panel departs from its own theming. The point of these gauges is
+     * that a metric is identifiable at a glance from the other screen, and a
+     * palette derived from the wallpaper would give four rings four shades of
+     * one colour.
+     */
+    private int colorRes(String key) {
+        if (key == null) return R.color.gauge_cpu;
+        if (key.startsWith(Telemetry.TEMP)) {
+            switch (key.substring(Telemetry.TEMP.length())) {
+                case "Board": return R.color.gauge_board;
+                case "USB":   return R.color.gauge_usb;
+                default:      return R.color.gauge_temp;
+            }
+        }
+        switch (key) {
+            case "gpu":     return R.color.gauge_gpu;
+            case "battery": return R.color.gauge_pwr;
+            case "ram":     return R.color.gauge_ram;
+            case "fan":     return R.color.gauge_fan;
+            default:        return R.color.gauge_cpu;
         }
     }
 
     private void renderGauges(Telemetry.Layout l, Telemetry.Readings r, Fps.Sample fps) {
-        for (Map.Entry<String, View> e : gaugeRows.entrySet()) {
-            View row = e.getValue();
-            ((TextView) row.findViewById(R.id.gauge_value))
-                    .setText(Telemetry.gaugeValue(e.getKey(), r, fps));
-            ProgressBar bar = row.findViewById(R.id.gauge_bar);
-            int pct = Telemetry.gaugePercent(e.getKey(), r, fps, l);
-            // INVISIBLE, not GONE: a gauge with no meaningful ceiling (the GPU,
-            // battery watts) still has to leave the value column where the
-            // rows above and below put it.
+        for (Map.Entry<String, RingGauge> e : ringViews.entrySet()) {
+            String key = e.getKey();
+            e.getValue().set(Telemetry.ringLabel(key),
+                             Telemetry.ringBig(key, r),
+                             Telemetry.ringSub(key, r),
+                             Telemetry.ringFraction(key, r, l),
+                             getColor(colorRes(key)));
+        }
+        for (Map.Entry<String, View> e : barViews.entrySet()) {
+            String key = e.getKey();
+            View tile = e.getValue();
+            ((TextView) tile.findViewById(R.id.tile_value))
+                    .setText(Telemetry.gaugeValue(key, r, fps));
+            ProgressBar bar = tile.findViewById(R.id.tile_bar);
+            int pct = Telemetry.gaugePercent(key, r, fps, l);
+            // INVISIBLE rather than GONE: a bar with no reading still has to
+            // leave the row the height its neighbours have.
             bar.setVisibility(pct < 0 ? View.INVISIBLE : View.VISIBLE);
             if (pct >= 0) bar.setProgress(pct);
         }

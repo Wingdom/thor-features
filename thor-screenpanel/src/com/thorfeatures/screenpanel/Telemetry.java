@@ -768,58 +768,54 @@ public final class Telemetry {
     public static final String TEMP = "temp:";
 
     /**
-     * The gauges to show, in display order, for a resolved layout.
+     * The four ring gauges, in display order, for a resolved layout.
      *
-     * Driven by what discovery actually found rather than by a fixed list, so
-     * a node that is missing or unreadable costs a row instead of showing a
-     * zero - an absent reading and a genuine zero must not look alike.
-     *
-     * Deliberately not every temperature discovery found. This device reports
-     * many zones per subsystem and the panel is a glance, not a monitor - a
-     * card long enough to scroll would push Mode off the bottom of the
-     * screen, which is the one thing the layout is not allowed to do. The
-     * three kept are the ones that answer different questions: the SoC's own
-     * heat, the board nearest the chassis the user is holding, and
-     * {@code usb-therm}.
-     *
-     * {@code usb-therm} earns its row because it is the open question on this
-     * hardware, not because it is hot. It is driven mainly by charge current
-     * rather than SoC load, and fanctl's 60 C quiet trip is still reasoned
-     * rather than measured because no log has caught it above 42 C. A live
-     * reading on the panel during a real charge-plus-game session is exactly
-     * the evidence that item has been waiting for.
+     * These four because they are what stock's own overlay ringed, and
+     * because they are the readings that move while a game runs - the ones
+     * worth watching out of the corner of an eye. A node discovery did not
+     * find costs its ring rather than drawing a zero, so an absent reading and
+     * a genuine zero never look alike. The GPU is the case that matters: its
+     * sysfs directory is readable only through the panel's own transport.
      */
-    public static List<String> gaugeKeys(Layout l, boolean fpsAvailable) {
+    public static List<String> ringKeys(Layout l) {
         List<String> keys = new ArrayList<>();
-        if (fpsAvailable) keys.add("fps");
         if (!l.policies.isEmpty()) keys.add("cpu");
         if (l.hasGpu())            keys.add("gpu");
-        if (l.hasFan())            keys.add("fan");
-        if (l.zones.containsKey("CPU"))  keys.add(TEMP + "CPU");
-        if (l.zones.containsKey("Board")) keys.add(TEMP + "Board");
-        if (l.zones.containsKey("USB"))  keys.add(TEMP + "USB");
         keys.add("battery");
         keys.add("ram");
         return keys;
     }
 
     /**
-     * How many gauges go in the left column of two.
+     * The supporting readings, shown as bars under the rings.
      *
-     * The remainder goes left rather than right so an odd count leaves the
-     * shorter column on the trailing edge, which is where the card has slack.
+     * Temperatures and fan duty change slowly enough to be checked rather than
+     * watched, so they get the quieter shape. Keeping two shapes is also what
+     * makes the hierarchy readable at a glance: a circle is a headline, a bar
+     * is a detail.
+     *
+     * {@code usb-therm} is here for a reason beyond completeness. Its 60 C
+     * quiet trip in fanctl is still reasoned rather than measured - no log has
+     * caught it above 42 C - and it is driven mainly by charge current rather
+     * than SoC load, so a live reading during a real charge-plus-game session
+     * is the evidence that question has been waiting for.
      */
-    public static int leftColumnCount(int total) {
-        return (total + 1) / 2;
+    public static List<String> barKeys(Layout l) {
+        List<String> keys = new ArrayList<>();
+        if (l.zones.containsKey("CPU"))   keys.add(TEMP + "CPU");
+        if (l.zones.containsKey("Board")) keys.add(TEMP + "Board");
+        if (l.zones.containsKey("USB"))   keys.add(TEMP + "USB");
+        if (l.hasFan())                   keys.add("fan");
+        return keys;
     }
 
-    /** The label for a gauge key. */
+    /** The label for a bar's reading. */
     public static String gaugeLabel(String key) {
         if (key == null) return "";
         if (key.startsWith(TEMP)) {
             String g = key.substring(TEMP.length());
-            // The group names double as labels, except CPU/GPU which would
-            // otherwise collide with the frequency rows above them.
+            // The group names double as labels, except CPU and GPU, which
+            // would otherwise collide with the rings of the same name above.
             if (g.equals("CPU") || g.equals("GPU")) return g + " temp";
             return g;
         }
@@ -832,6 +828,126 @@ public final class Telemetry {
             case "ram":     return "RAM";
             default:        return key;
         }
+    }
+
+    /** The short name drawn at the top of a ring. */
+    public static String ringLabel(String key) {
+        if (key == null) return "";
+        switch (key) {
+            case "cpu":     return "CPU";
+            case "gpu":     return "GPU";
+            case "battery": return "PWR";
+            case "ram":     return "RAM";
+            default:        return gaugeLabel(key);
+        }
+    }
+
+    /**
+     * Full scale for the power ring, in watts.
+     *
+     * <b>A display convention, not a hardware limit.</b> There is no honest
+     * ceiling for battery power - the draw depends on what is plugged in, and
+     * this device cannot even negotiate PD while adb holds the USB-C port - so
+     * the arc is scaled to a round number that covers what this handheld
+     * actually does: a few watts idle, 6 W seen under a shell load, and
+     * charging in the teens. The printed figure is exact; only the arc is
+     * approximate, and it saturates rather than misleading past full.
+     */
+    public static final double PWR_FULL_SCALE_W = 25.0;
+
+    /** The large figure in the middle of a ring, with no unit. */
+    public static String ringBig(String key, Readings r) {
+        if (key == null || r == null) return NONE;
+        switch (key) {
+            case "cpu":     return cpuFreqValue(r.cpuMaxKhz());
+            case "gpu":     return r.gpuBusyPct == ABSENT
+                                   ? NONE : String.valueOf(Math.min(r.gpuBusyPct, 100));
+            case "battery": return wattsValue(r.batCurrentUa, r.batVoltageUv, r.batStatus);
+            case "ram":     return r.memTotalKb == ABSENT || r.memAvailKb == ABSENT
+                                   ? NONE
+                                   : String.format(Locale.ROOT, "%.1f",
+                                       (r.memTotalKb - r.memAvailKb) / 1048576.0);
+            default:        return gaugeValue(key, r, null);
+        }
+    }
+
+    /**
+     * The small line under a ring's figure: its unit, and anything the figure
+     * alone does not say.
+     *
+     * The CPU's carries the load percentage beside the unit, so the ring keeps
+     * both numbers the row used to show. Which is the clock and which is the
+     * load stays fixed whatever the readings are - the large figure is always
+     * the clock - so the gauge never changes meaning between ticks, including
+     * the first one, where the load is not computable yet.
+     */
+    public static String ringSub(String key, Readings r) {
+        if (key == null || r == null) return "";
+        switch (key) {
+            case "cpu": {
+                String unit = cpuFreqUnit(r.cpuMaxKhz());
+                if (r.cpuUtilPct == ABSENT) return unit;
+                return unit + "  " + formatPercent(r.cpuUtilPct);
+            }
+            case "gpu":     return "%";
+            case "battery": return "W";
+            case "ram":     return r.memTotalKb == ABSENT
+                                   ? "GB"
+                                   : String.format(Locale.ROOT, "/ %.1f GB",
+                                       r.memTotalKb / 1048576.0);
+            default:        return "";
+        }
+    }
+
+    /** The clock without its unit: "2.71", or "864". */
+    static String cpuFreqValue(long khz) {
+        if (khz == ABSENT || khz < 0) return NONE;
+        long mhz = Math.round(khz / 1000.0);
+        if (mhz >= 1000) return String.format(Locale.ROOT, "%.2f", mhz / 1000.0);
+        return String.valueOf(mhz);
+    }
+
+    /** The unit that goes with {@link #cpuFreqValue}. */
+    static String cpuFreqUnit(long khz) {
+        if (khz == ABSENT || khz < 0) return "";
+        return Math.round(khz / 1000.0) >= 1000 ? "GHz" : "MHz";
+    }
+
+    /**
+     * Signed watts to one decimal and no unit, for a ring's middle.
+     *
+     * One decimal rather than the row's two: the figure sits inside a circle
+     * about 40dp across, and a fourth digit there is smaller than it is
+     * useful. The sign rule is the row's, unchanged.
+     */
+    static String wattsValue(long uA, long uV, String status) {
+        if (uA == ABSENT || uV == ABSENT) return NONE;
+        double w = Math.abs(uA / 1e6) * (uV / 1e6);
+        String s = status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
+        String sign = "";
+        if (s.startsWith("charging"))         sign = "+";
+        else if (s.startsWith("discharging")) sign = "−";
+        else if (uA > 0)                      sign = "+";
+        else if (uA < 0)                      sign = "−";
+        return String.format(Locale.ROOT, "%s%.1f", sign, w);
+    }
+
+    /**
+     * How much of a ring to fill, 0..1, or -1 for no reading.
+     *
+     * Everything but power reuses {@link #gaugePercent}, so a ring and the bar
+     * it replaced cannot disagree. Power is the exception because it is the
+     * one reading with no ceiling to divide by; it gets
+     * {@link #PWR_FULL_SCALE_W} and saturates there.
+     */
+    public static float ringFraction(String key, Readings r, Layout l) {
+        if ("battery".equals(key)) {
+            if (r == null || r.batCurrentUa == ABSENT || r.batVoltageUv == ABSENT) return -1f;
+            double w = Math.abs(r.batCurrentUa / 1e6) * (r.batVoltageUv / 1e6);
+            return (float) Math.max(0.0, Math.min(1.0, w / PWR_FULL_SCALE_W));
+        }
+        int pct = gaugePercent(key, r, null, l);
+        return pct < 0 ? -1f : pct / 100f;
     }
 
     /** The text a gauge shows for one tick's readings. */
