@@ -5,6 +5,15 @@
      (2026-10-27) - it is the row reached most often and the one the button
      exists for. Do not reorder these again.
 
+     The paddings throughout are tighter than they look like they want to be,
+     and that is load-bearing rather than taste. Measured on the device
+     2026-11-04: the usable band between the status bar (56px) and the
+     navigation bar (96px) is 928px, of which this column gets 816 after its
+     own margins. Adding the tab strip pushed the Controls tab to 928px of
+     content, and the Mode card - the last child - was silently clipped to
+     101px of its 221, losing all three of its labels. Do not restore these
+     paddings without re-measuring; the column has about 38px of headroom.
+
      Mode is deliberately NOT one of the tabs. Stock put its mode options and
      its quick-settings tiles on separate tabs, and the earlier version of
      this file was one scrolling column on the grounds that "a tap to reach
@@ -28,7 +37,7 @@
         android:layout_gravity="bottom"
         android:layout_marginStart="26dp"
         android:layout_marginEnd="26dp"
-        android:layout_marginBottom="12dp"
+        android:layout_marginBottom="8dp"
         android:orientation="vertical">
 
         <!-- The tab strip reuses the 60/120 switch's shapes rather than
@@ -37,9 +46,9 @@
         <LinearLayout
             android:id="@+id/tab_strip"
             android:layout_width="wrap_content"
-            android:layout_height="40dp"
+            android:layout_height="30dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="10dp"
+            android:layout_marginBottom="6dp"
             android:orientation="horizontal"
             android:background="@drawable/hz_group">
 
@@ -80,8 +89,8 @@
             android:layout_height="wrap_content"
             android:background="@drawable/panel_card"
             android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="8dp">
+            android:paddingTop="6dp"
+            android:paddingBottom="4dp">
 
 
             <include layout="@layout/brightness_row" android:id="@+id/bright_top" />
@@ -93,11 +102,11 @@
             android:id="@+id/card_quick"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="6dp"
             android:background="@drawable/panel_card"
             android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="12dp">
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
 
 
             <LinearLayout
@@ -131,11 +140,11 @@
             android:id="@+id/card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="6dp"
             android:background="@drawable/panel_card"
             android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="12dp">
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
 
 
             <LinearLayout
