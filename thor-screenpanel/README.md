@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 439 host tests + 17 action tests, then packages
+./build.sh      runs 449 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -199,7 +199,8 @@ device is spending, and the temperatures and fan have a section of their own.
 
 The rings come in three sizes, because five equal circles would give five
 equal claims on the eye: **FPS** largest, **CPU** and **GPU** matched in the
-middle so they can be compared against each other, **PWR** and **RAM** small.
+middle so they can be compared against each other, **PWR** and **RAM** small
+and stacked one above the other in a narrow column on the right.
 
 Each metric keeps one colour, which is the one place the panel departs from
 Material You: a palette derived from the wallpaper would make four rings four

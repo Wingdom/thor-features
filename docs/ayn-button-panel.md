@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 439 tests
+feature on the host with no device and no root — that is how all 449 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -278,6 +278,30 @@ the one beside it and the row reads as ragged rather than as a set. That was
 visible on the first build of this layout and is the reason `maxRingSizeDp`
 exists.
 
+### Small rings stack
+
+Power and memory sit one above the other in a narrow tower on the right,
+rather than side by side. The rule is **small rings stack** — not that
+power-and-memory is a special case:
+
+* Two small circles in a column come to about the height of one large one, so
+  the card squares up beside the wider ones instead of being a long thin strip.
+* It suits a screen that is 620x540dp — short and wide, so height is the
+  cheap dimension and width is the scarce one.
+* Anything medium or larger would be squeezed by halving the height, so it
+  does not stack.
+
+A stacked card counts only its **widest** ring toward the row's width, not the
+sum, or the column would sit in a card mostly empty. It counts the **sum plus
+the gaps** toward the height, which is what makes the stack — at 158dp — the
+tallest thing in the row rather than the FPS ring.
+
+It cost nothing in the column's height budget. The ring row went from 160dp to
+186dp, and the tab's `minHeight` was already reserving more than the content
+needed, so `panel_root` stayed at 767px of its 816 and the window top stayed at
+`[0,201]`. The freed width went into the other rings, which grew from 132/112
+to 150/120.
+
 ### The rings are three sizes, not one
 
 Five equal circles give five equal claims on the eye, and these are not
@@ -285,9 +309,9 @@ equal. The size says what the reading is for:
 
 | | | |
 |---|---|---|
-| **FPS** | 132dp | the only reading about the game rather than the machine, and what the tab gets opened for |
-| **CPU**, **GPU** | 112dp | what is being asked of the chip — matched to each other, because that comparison is the point when a game drops frames |
-| **PWR**, **RAM** | 88dp | real readings, but checked rather than watched; neither changes what you would do in the next few seconds |
+| **FPS** | 150dp | the only reading about the game rather than the machine, and what the tab gets opened for |
+| **CPU**, **GPU** | 120dp | what is being asked of the chip — matched to each other, because that comparison is the point when a game drops frames |
+| **PWR**, **RAM** | 76dp, stacked | real readings, but checked rather than watched; neither changes what you would do in the next few seconds |
 
 A cell's width is weighted by the same number its diameter uses, so the two
 cannot drift into a cell much wider than the circle it holds, and the row is

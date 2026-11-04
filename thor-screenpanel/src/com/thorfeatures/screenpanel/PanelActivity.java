@@ -584,15 +584,16 @@ public final class PanelActivity extends Activity {
         LayoutInflater inf = LayoutInflater.from(this);
 
         List<List<String>> groups = Telemetry.ringGroups(l, fpsSupported);
-        // Every card gets the height of the largest ring on show, plus the
-        // card's own padding, rather than wrapping its own contents. Left to
-        // wrap, the card holding the small rings finishes higher than the one
-        // beside it and the row reads as ragged rather than as a set.
-        int cardHeight = Math.round(Telemetry.maxRingSizeDp(groups) * density)
+        // One height for every card, so the row shares a top and a bottom
+        // edge rather than stepping down from left to right.
+        int cardHeight = Math.round(Telemetry.ringRowHeightDp(groups) * density)
                 + Math.round(28 * density);
+        int stackGap = Math.round(Telemetry.RING_STACK_GAP * density);
         for (int i = 0; i < groups.size(); i++) {
             List<String> group = groups.get(i);
+            boolean stacked = Telemetry.isStacked(group);
             LinearLayout card = (LinearLayout) inf.inflate(R.layout.ring_card, cards, false);
+            card.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
             // The card's share of the row follows the rings it holds, so the
             // cards stay proportional to their contents rather than to how
             // many of them there are.
@@ -601,15 +602,22 @@ public final class PanelActivity extends Activity {
             if (i > 0) lp.leftMargin = gap;
             card.setLayoutParams(lp);
 
-            for (String key : group) {
+            for (int j = 0; j < group.size(); j++) {
+                String key = group.get(j);
                 RingGauge g = new RingGauge(this);
-                // The view draws its circle on min(width, height), so the
-                // height sets the diameter and the weight keeps the cell
-                // roughly square.
-                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
-                        0, Math.round(Telemetry.ringSizeDp(key) * density),
-                        Telemetry.ringWeight(key));
-                rp.gravity = android.view.Gravity.CENTER_VERTICAL;
+                int ring = Math.round(Telemetry.ringSizeDp(key) * density);
+                // The view draws its circle on min(width, height). Side by
+                // side, the height sets the diameter and the weight shares
+                // out the width; stacked, the width is the whole card and the
+                // height is fixed, so the diameter is the height either way.
+                LinearLayout.LayoutParams rp = stacked
+                        ? new LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT, ring)
+                        : new LinearLayout.LayoutParams(0, ring, Telemetry.ringWeight(key));
+                rp.gravity = stacked
+                        ? android.view.Gravity.CENTER_HORIZONTAL
+                        : android.view.Gravity.CENTER_VERTICAL;
+                if (stacked && j > 0) rp.topMargin = stackGap;
                 g.setLayoutParams(rp);
                 card.addView(g);
                 ringViews.put(key, g);

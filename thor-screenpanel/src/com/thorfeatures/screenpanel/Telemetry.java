@@ -829,23 +829,64 @@ public final class Telemetry {
     }
 
     /**
-     * The diameter of the largest ring on show, in dp.
+     * Whether a card's rings are stacked vertically rather than sat side by
+     * side.
      *
-     * Every ring card is given this height rather than wrapping its own
-     * contents, so the cards in the row share one baseline and one bottom
-     * edge. Left to wrap, a card holding small rings finishes higher than the
-     * one beside it and the row reads as ragged rather than as a set.
+     * The rule is that small rings stack - not that the power-and-memory card
+     * is a special case. Two small circles in a column take about the height
+     * of one large one, so the card ends up a narrow tower beside the wider
+     * ones, which is both a better use of a screen that is short and wide and
+     * a second way of saying these readings are the quiet ones. Anything
+     * medium or larger would be squeezed by halving the height, so it does
+     * not stack.
      */
-    public static int maxRingSizeDp(List<List<String>> groups) {
-        int max = RING_SMALL;
-        for (List<String> group : groups) {
-            for (String key : group) max = Math.max(max, ringSizeDp(key));
+    public static boolean isStacked(List<String> group) {
+        if (group == null || group.size() < 2) return false;
+        for (String key : group) if (ringSizeDp(key) != RING_SMALL) return false;
+        return true;
+    }
+
+    /** How tall a card's rings are together, in dp. */
+    public static int groupHeightDp(List<String> group) {
+        if (group == null || group.isEmpty()) return RING_SMALL;
+        if (isStacked(group)) {
+            int h = RING_STACK_GAP * (group.size() - 1);
+            for (String key : group) h += ringSizeDp(key);
+            return h;
         }
+        int max = 0;
+        for (String key : group) max = Math.max(max, ringSizeDp(key));
         return max;
     }
 
-    /** The share of the row's width a card of rings takes. */
+    /**
+     * The height every ring card is given, in dp.
+     *
+     * One height for all of them rather than letting each wrap its contents,
+     * so the row shares a top and a bottom edge. Left to wrap, the card of
+     * small rings finishes higher than the one beside it and the row reads as
+     * ragged rather than as a set - which is exactly how the first build of
+     * this layout looked.
+     */
+    public static int ringRowHeightDp(List<List<String>> groups) {
+        int max = RING_SMALL;
+        for (List<String> group : groups) max = Math.max(max, groupHeightDp(group));
+        return max;
+    }
+
+    /**
+     * The share of the row's width a card of rings takes.
+     *
+     * Summed across rings that sit side by side, but only the widest of rings
+     * that are stacked - a column of two needs the width of one, and giving
+     * it the width of two would leave it mostly empty.
+     */
     public static float groupWeight(List<String> group) {
+        if (isStacked(group)) {
+            float max = 0f;
+            for (String key : group) max = Math.max(max, ringWeight(key));
+            return max;
+        }
         float w = 0f;
         for (String key : group) w += ringWeight(key);
         return w;
@@ -922,9 +963,12 @@ public final class Telemetry {
      * A cell's width is weighted by the same number, so each stays close to
      * square and the gaps between rings stay even.
      */
-    public static final int RING_LARGE  = 132;
-    public static final int RING_MEDIUM = 112;
-    public static final int RING_SMALL  = 88;
+    public static final int RING_LARGE  = 150;
+    public static final int RING_MEDIUM = 120;
+    public static final int RING_SMALL  = 76;
+
+    /** The gap between two rings stacked in one card. */
+    public static final int RING_STACK_GAP = 6;
 
     /** How big a ring should be drawn, in dp. */
     public static int ringSizeDp(String key) {

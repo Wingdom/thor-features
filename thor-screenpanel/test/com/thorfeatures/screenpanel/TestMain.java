@@ -1232,8 +1232,8 @@ public final class TestMain {
                   && Telemetry.RING_MEDIUM > Telemetry.RING_SMALL);
         // Width share follows the diameter, so a cell can never end up much
         // wider than the circle it holds.
-        check("weight follows the diameter", 1.32f, Telemetry.ringWeight("fps"));
-        check("and for a small ring", 0.88f, Telemetry.ringWeight("ram"));
+        check("weight follows the diameter", 1.50f, Telemetry.ringWeight("fps"));
+        check("and for a small ring", 0.76f, Telemetry.ringWeight("ram"));
 
         // --- how the rings are grouped into cards --------------------------------
         // A gap between cards reads as a change of subject, and there are
@@ -1253,22 +1253,60 @@ public final class TestMain {
         check("root refused means no cards at all", "[[battery, ram]]",
               Telemetry.ringGroups(Telemetry.parseDiscovery(""), false).toString());
         // A card's width follows the rings it holds, not the number of cards.
-        check("the CPU/GPU card is two mediums wide", 2.24f,
+        check("the CPU/GPU card is two mediums wide", 2.40f,
               Telemetry.groupWeight(Telemetry.ringGroups(l, true).get(1)));
-        check("the FPS card is one large wide", 1.32f,
+        check("the FPS card is one large wide", 1.50f,
               Telemetry.groupWeight(Telemetry.ringGroups(l, true).get(0)));
-        check("the PWR/RAM card is two smalls wide", 1.76f,
+        // Stacked, so one ring wide and not two.
+        check("the PWR/RAM card is one small wide", 0.76f,
               Telemetry.groupWeight(Telemetry.ringGroups(l, true).get(2)));
 
-        // Every card is as tall as the largest ring on show, so the row shares
-        // one bottom edge instead of stepping down from left to right.
-        check("the row is as tall as its largest ring", Telemetry.RING_LARGE,
-              Telemetry.maxRingSizeDp(Telemetry.ringGroups(l, true)));
-        check("and shrinks when FPS is absent", Telemetry.RING_MEDIUM,
-              Telemetry.maxRingSizeDp(Telemetry.ringGroups(l, false)));
-        check("smalls only still have a height", Telemetry.RING_SMALL,
-              Telemetry.maxRingSizeDp(Telemetry.ringGroups(
+        // --- which cards stack ---------------------------------------------------
+        // The rule is that SMALL rings stack, not that power-and-memory is a
+        // special case: two small circles in a column take about the height of
+        // one large one, which suits a screen that is short and wide.
+        List<List<String>> gs = Telemetry.ringGroups(l, true);
+        check("power and memory stack", true, Telemetry.isStacked(gs.get(2)));
+        check("CPU and GPU do not - they would be squeezed", false,
+              Telemetry.isStacked(gs.get(1)));
+        check("a single ring never stacks", false, Telemetry.isStacked(gs.get(0)));
+        check("an empty group never stacks", false,
+              Telemetry.isStacked(new java.util.ArrayList<String>()));
+
+        // A stacked card is as tall as its rings plus the gap between them...
+        check("the stacked card is two smalls and a gap",
+              Telemetry.RING_SMALL * 2 + Telemetry.RING_STACK_GAP,
+              Telemetry.groupHeightDp(gs.get(2)));
+        // ...while a side-by-side card is only as tall as its tallest ring.
+        check("a side-by-side card is one ring tall", Telemetry.RING_MEDIUM,
+              Telemetry.groupHeightDp(gs.get(1)));
+        check("the FPS card is one large tall", Telemetry.RING_LARGE,
+              Telemetry.groupHeightDp(gs.get(0)));
+
+        // ...and only the widest of stacked rings counts toward the width, or
+        // the column would sit in a card mostly empty.
+        check("a stacked card is one ring wide", Telemetry.ringWeight("ram"),
+              Telemetry.groupWeight(gs.get(2)));
+        check("a side-by-side card is the sum", 2.40f,
+              Telemetry.groupWeight(gs.get(1)));
+
+        // Every card takes the row's height, so the row shares a top and a
+        // bottom edge instead of stepping down from left to right. Here the
+        // stacked column is the tallest thing, not the FPS ring.
+        check("the stack sets the row height",
+              Telemetry.RING_SMALL * 2 + Telemetry.RING_STACK_GAP,
+              Telemetry.ringRowHeightDp(gs));
+        check("and still does without FPS",
+              Telemetry.RING_SMALL * 2 + Telemetry.RING_STACK_GAP,
+              Telemetry.ringRowHeightDp(Telemetry.ringGroups(l, false)));
+        check("a lone stacked card still has a height",
+              Telemetry.RING_SMALL * 2 + Telemetry.RING_STACK_GAP,
+              Telemetry.ringRowHeightDp(Telemetry.ringGroups(
                   Telemetry.parseDiscovery(""), false)));
+        // The hierarchy survives the new sizes.
+        check("the sizes are still a hierarchy", true,
+              Telemetry.RING_LARGE > Telemetry.RING_MEDIUM
+                  && Telemetry.RING_MEDIUM > Telemetry.RING_SMALL);
 
         check("rings use short names", "PWR", Telemetry.ringLabel("battery"));
         check("and the CPU keeps its own", "CPU", Telemetry.ringLabel("cpu"));
