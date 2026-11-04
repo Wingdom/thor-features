@@ -77,23 +77,32 @@ public final class Telemetry {
     static final String BATTERY = "/sys/class/power_supply/battery";
 
     /**
-     * Candidate GPU frequency paths, in the order they are preferred.
+     * Candidate GPU utilisation paths, in the order they are preferred.
      *
-     * Several rather than one because the brief's path
-     * ({@code kgsl-3d0/devfreq/cur_freq}) resolved to an empty directory on
-     * this build and then to {@code Permission denied}. Probing costs nothing
-     * extra: they go into the same discovery {@code grep} as everything else,
-     * and a path that cannot be read simply produces no line.
+     * <b>Utilisation and not frequency, which is measured rather than
+     * assumed.</b> The obvious gauge is {@code devfreq/cur_freq}, and on this
+     * device it is useless: it reads 680000000 and stays there. Its own
+     * {@code trans_stat} is unambiguous - 2,693,080 ms accumulated at
+     * 680 MHz, exactly 0 ms at each of the other eight available steps, and
+     * three recorded transitions in the whole uptime - while
+     * {@code gpu_busy_percentage} over the same moments read 0-4%. The
+     * frequency node reports the ceiling, not the clock.
+     *
+     * So a frequency gauge here would be a flat "680 MHz" that never moves
+     * and always looks like a GPU at full tilt. That is the same failure as
+     * measuring the panel's own frame rate with a Choreographer: always
+     * plausible, never right. Utilisation moves, so utilisation is the gauge.
+     *
+     * Several candidates rather than one because the brief's path did not
+     * resolve the way it was expected to. Probing costs nothing extra: they
+     * go into the same discovery {@code grep} as everything else, and a path
+     * that cannot be read simply produces no line. {@code gpu_busy_percentage}
+     * reads "2 %" and {@code gpu_load} reads a bare "4"; the parser takes
+     * either.
      */
-    static final String[] GPU_FREQ_CANDIDATES = {
-        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq",
-        "/sys/class/kgsl/kgsl-3d0/gpuclk",
-        "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/cur_freq",
-    };
-
-    /** Candidate GPU utilisation paths. Same reasoning as the frequencies. */
     static final String[] GPU_BUSY_CANDIDATES = {
         "/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage",
+        "/sys/class/kgsl/kgsl-3d0/devfreq/gpu_load",
     };
 
     private Telemetry() {}
@@ -142,20 +151,41 @@ public final class Telemetry {
      * been misled by it: it is heated mainly by charge current, not SoC load,
      * and a validation session once produced a confident plateau that was
      * near a best case because no PD had been negotiated.
+     *
+     * <b>"Board" is {@code xo-therm}, and it is not called "Skin" on
+     * purpose.</b> This device has 60 thermal zones and <em>none</em> of them
+     * is a skin sensor: there is no {@code skin} in any type and no
+     * {@code quiet-therm}, which is what the usual Qualcomm layout would have
+     * offered. {@code xo-therm} is the crystal-oscillator thermistor on the
+     * board, which is the nearest thing available and is a reasonable proxy
+     * for what the chassis feels - but it is a board sensor, so calling the
+     * row "Skin" would claim a measurement this hardware does not make. The
+     * {@code skin} and {@code quiet-therm} rules are kept below as a fallback
+     * for a build that does have one, ahead of {@code xo-therm} because a real
+     * skin sensor would be the better reading.
+     *
+     * Checked against the device 2026-11-04: 18 zones match the CPU rule
+     * ({@code cpuss-0..3}, {@code cpu-0-0..2}, {@code cpu-1-0..10}), 8 match
+     * GPU ({@code gpuss-0..7}), and {@code battery}, {@code usb-therm} and
+     * {@code xo-therm} each match exactly one. Note {@code vbat} does not
+     * match the battery rule - it has one "t" - and a bare {@code usb} zone
+     * exists but is not {@code usb-therm}, so neither is picked up by
+     * accident.
      */
     static String groupFor(String type) {
         if (type == null) return null;
         String t = type.toLowerCase(Locale.ROOT);
-        if (t.equals("usb-therm"))                       return "USB";
-        if (t.contains("batt"))                          return "Battery";
-        if (t.contains("skin") || t.equals("quiet-therm")) return "Skin";
-        if (t.contains("gpu"))                           return "GPU";
-        if (t.startsWith("cpu"))                         return "CPU";
+        if (t.equals("usb-therm"))                         return "USB";
+        if (t.contains("batt"))                            return "Battery";
+        if (t.contains("skin") || t.equals("quiet-therm")) return "Board";
+        if (t.equals("xo-therm"))                          return "Board";
+        if (t.contains("gpu"))                             return "GPU";
+        if (t.startsWith("cpu"))                           return "CPU";
         return null;
     }
 
     /** The gauge order on screen. Groups with no zones are left out. */
-    static final String[] GROUP_ORDER = { "CPU", "GPU", "Skin", "USB", "Battery" };
+    static final String[] GROUP_ORDER = { "CPU", "GPU", "Board", "USB", "Battery" };
 
     // --- resolved paths -----------------------------------------------------
 
@@ -185,7 +215,6 @@ public final class Telemetry {
         public String fanPwmPath;
         public String fanStatePath;
         public String fanMaxStatePath;
-        public String gpuFreqPath;
         public String gpuBusyPath;
         /**
          * The fastest clock any cluster can reach, in kHz, for the CPU bar.
@@ -200,7 +229,7 @@ public final class Telemetry {
         public long cpuMaxKhzCeiling = ABSENT;
 
         public boolean hasFan() { return fanPwmPath != null; }
-        public boolean hasGpuFreq() { return gpuFreqPath != null; }
+        public boolean hasGpu() { return gpuBusyPath != null; }
 
         /**
          * True when discovery resolved nothing at all.
@@ -218,7 +247,7 @@ public final class Telemetry {
         @Override public String toString() {
             return "policies=" + policies + " zones=" + zones.keySet()
                  + " fan=" + (hasFan() ? "yes" : "no")
-                 + " gpu=" + (hasGpuFreq() ? "yes" : "no");
+                 + " gpu=" + (hasGpu() ? "yes" : "no");
         }
     }
 
@@ -240,7 +269,6 @@ public final class Telemetry {
         sb.append("/sys/class/thermal/cooling_device*/type ");
         sb.append("/sys/devices/system/cpu/cpufreq/policy*/affected_cpus ");
         sb.append("/sys/devices/system/cpu/cpufreq/policy*/cpuinfo_max_freq ");
-        for (String p : GPU_FREQ_CANDIDATES) sb.append(p).append(' ');
         for (String p : GPU_BUSY_CANDIDATES) sb.append(p).append(' ');
         sb.append("2>/dev/null");
         return sb.toString();
@@ -289,9 +317,8 @@ public final class Telemetry {
                 }
 
             } else {
-                for (String c : GPU_FREQ_CANDIDATES) {
-                    if (path.equals(c) && l.gpuFreqPath == null) l.gpuFreqPath = path;
-                }
+                // First candidate that answered wins; the array is in
+                // preference order.
                 for (String c : GPU_BUSY_CANDIDATES) {
                     if (path.equals(c) && l.gpuBusyPath == null) l.gpuBusyPath = path;
                 }
@@ -309,20 +336,31 @@ public final class Telemetry {
     // --- one tick -----------------------------------------------------------
 
     /**
-     * The per-tick command: one {@code grep} over every resolved path, then a
-     * second over {@code /proc/meminfo}.
+     * The per-tick command: one {@code grep} over every resolved path,
+     * {@code /proc/meminfo} included.
      *
-     * Two forks rather than one because meminfo needs a narrower pattern -
-     * matching everything there would drag fifty irrelevant lines through
-     * every tick. They are one command string, so the session carries both in
-     * a single exchange: {@link RootProtocol#wrap} puts the whole string in
-     * one subshell and reads one reply.
+     * <b>One fork, not two, because it was measured.</b> The first version
+     * used a second {@code grep} with a narrow pattern for meminfo, to avoid
+     * dragging fifty irrelevant lines through every tick. On the device
+     * 2026-11-04, over ten iterations each:
      *
-     * The exit status of that pair is the second grep's and is deliberately
-     * not load-bearing. A partly readable tick yields partly filled
-     * {@link Readings}, and each gauge decides for itself whether it has a
-     * number - which is this project's standing rule that a value is verified
-     * by reading it, not by an exit code.
+     * <pre>
+     *   two greps, meminfo filtered    41 ms
+     *   one grep, meminfo whole        26 ms
+     *   one grep, one file (the floor) 13 ms
+     * </pre>
+     *
+     * So a fork costs 13 ms and the extra lines cost nothing measurable - the
+     * whole 41-path read is 26 ms, of which 13 is the fork itself and about
+     * 9 ms is 29 thermal sensors. Filtering meminfo was paying 15 ms to avoid
+     * 48 short lines, which is the wrong way round. It also costs no code:
+     * {@link #parseTick} already collects every meminfo line and picks the two
+     * it wants, so matching them all changes nothing above this method.
+     *
+     * The exit status is deliberately not load-bearing. A partly readable
+     * tick yields partly filled {@link Readings}, and each gauge decides for
+     * itself whether it has a number - this project's standing rule that a
+     * value is verified by reading it, not by an exit code.
      */
     public static String tickCommand(Layout l) {
         List<String> paths = new ArrayList<>();
@@ -331,20 +369,19 @@ public final class Telemetry {
         if (l.fanPwmPath != null)      paths.add(l.fanPwmPath);
         if (l.fanStatePath != null)    paths.add(l.fanStatePath);
         if (l.fanMaxStatePath != null) paths.add(l.fanMaxStatePath);
-        if (l.gpuFreqPath != null)     paths.add(l.gpuFreqPath);
         if (l.gpuBusyPath != null)     paths.add(l.gpuBusyPath);
         paths.add(BATTERY + "/current_now");
         paths.add(BATTERY + "/voltage_now");
         paths.add(BATTERY + "/status");
         paths.add(BATTERY + "/capacity");
+        paths.add("/proc/meminfo");
 
         StringBuilder sb = new StringBuilder("grep -H . ");
         for (String p : paths) {
             if (!isSafePath(p)) continue;
             sb.append(p).append(' ');
         }
-        sb.append("2>/dev/null; ");
-        sb.append("grep -H -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null");
+        sb.append("2>/dev/null");
         return sb.toString();
     }
 
@@ -357,7 +394,6 @@ public final class Telemetry {
         public final List<Long> cpuKhz = new ArrayList<>();
         /** Group label to that group's hottest zone, in milli-degrees C. */
         public final Map<String, Long> tempMilliC = new LinkedHashMap<>();
-        public long gpuHz = ABSENT;
         public long gpuBusyPct = ABSENT;
         public long fanPwm = ABSENT;
         public long fanState = ABSENT;
@@ -369,7 +405,25 @@ public final class Telemetry {
         public long memTotalKb = ABSENT;
         public long memAvailKb = ABSENT;
 
-        /** The fastest cluster right now, which is what a CPU gauge means. */
+        /**
+         * The fastest cluster right now, which is what a CPU gauge means.
+         *
+         * <b>This reading observes a CPU that is awake to serve it.</b> The
+         * {@code cat} performing the read is itself the load, so by the time
+         * the value is produced the governor has already ramped that cluster -
+         * six consecutive samples on an idle device returned byte-identical
+         * frequencies. That is an observer effect, not a dead node, and the
+         * residency counters prove it: {@code stats/time_in_state} on
+         * 2026-11-04 showed policy0 had visited 14 of its 16 states over
+         * 24,682 transitions, policy3 19 of 20, and policy7 19 of 21. The node
+         * moves; it just cannot be caught idle from the inside.
+         *
+         * Worth contrasting with the GPU, where the same technique gave the
+         * opposite answer - {@code trans_stat} showed 0 ms at eight of nine
+         * steps, which is why the GPU gauge is a utilisation and this one is a
+         * frequency. The lesson is the technique, not either result: ask the
+         * residency counter whether a node is alive before trusting it.
+         */
         public long cpuMaxKhz() {
             long max = ABSENT;
             for (Long v : cpuKhz) if (v != null && v != ABSENT && (max == ABSENT || v > max)) max = v;
@@ -414,7 +468,6 @@ public final class Telemetry {
             r.tempMilliC.put(e.getKey(), hottest);
         }
 
-        if (layout.gpuFreqPath != null)     r.gpuHz       = parseLong(got.get(layout.gpuFreqPath));
         if (layout.gpuBusyPath != null)     r.gpuBusyPct  = parseBusyPercent(got.get(layout.gpuBusyPath));
         if (layout.fanPwmPath != null)      r.fanPwm      = parseLong(got.get(layout.fanPwmPath));
         if (layout.fanStatePath != null)    r.fanState    = parseLong(got.get(layout.fanStatePath));
@@ -484,20 +537,10 @@ public final class Telemetry {
         return mhz + " MHz";
     }
 
-    /**
-     * GPU frequency: Hz in, "680 MHz" out.
-     *
-     * Hz rather than kHz because devfreq reports Hz while cpufreq reports
-     * kHz - a thousand-fold difference between two nodes that look alike,
-     * which is exactly the kind of unit mismatch this project has been caught
-     * by before when it translated stock's nanosecond fan duty into a 0-255
-     * node by arithmetic.
-     */
-    public static String formatGpuFreq(long hz) {
-        if (hz == ABSENT || hz < 0) return NONE;
-        long mhz = Math.round(hz / 1_000_000.0);
-        if (mhz >= 1000) return String.format(Locale.ROOT, "%.2f GHz", mhz / 1000.0);
-        return mhz + " MHz";
+    /** A utilisation reading: "42%". */
+    public static String formatPercent(long pct) {
+        if (pct == ABSENT || pct < 0) return NONE;
+        return Math.min(pct, 100) + "%";
     }
 
     /** Temperature: milli-degrees in, "45 C" out. */
@@ -596,16 +639,15 @@ public final class Telemetry {
      *
      * Driven by what discovery actually found rather than by a fixed list, so
      * a node that is missing or unreadable costs a row instead of showing a
-     * zero. The GPU is the case that matters: its sysfs path may be denied
-     * outright on this build, and a "0 MHz" GPU reads as an idle GPU rather
-     * than as an absent one.
+     * zero - an absent reading and a genuine zero must not look alike.
      *
      * Deliberately not every temperature discovery found. This device reports
      * many zones per subsystem and the panel is a glance, not a monitor - a
      * card long enough to scroll would push Mode off the bottom of the
      * screen, which is the one thing the layout is not allowed to do. The
      * three kept are the ones that answer different questions: the SoC's own
-     * heat, the chassis the user is holding, and {@code usb-therm}.
+     * heat, the board nearest the chassis the user is holding, and
+     * {@code usb-therm}.
      *
      * {@code usb-therm} earns its row because it is the open question on this
      * hardware, not because it is hot. It is driven mainly by charge current
@@ -618,10 +660,10 @@ public final class Telemetry {
         List<String> keys = new ArrayList<>();
         if (fpsAvailable) keys.add("fps");
         if (!l.policies.isEmpty()) keys.add("cpu");
-        if (l.hasGpuFreq())        keys.add("gpu");
+        if (l.hasGpu())            keys.add("gpu");
         if (l.hasFan())            keys.add("fan");
         if (l.zones.containsKey("CPU"))  keys.add(TEMP + "CPU");
-        if (l.zones.containsKey("Skin")) keys.add(TEMP + "Skin");
+        if (l.zones.containsKey("Board")) keys.add(TEMP + "Board");
         if (l.zones.containsKey("USB"))  keys.add(TEMP + "USB");
         keys.add("battery");
         keys.add("ram");
@@ -669,7 +711,7 @@ public final class Telemetry {
         switch (key) {
             case "fps":     return Fps.format(fps);
             case "cpu":     return formatCpuFreq(r.cpuMaxKhz());
-            case "gpu":     return formatGpuFreq(r.gpuHz);
+            case "gpu":     return formatPercent(r.gpuBusyPct);
             case "fan":     return formatFan(r.fanPwm, r.fanState, r.fanMaxState);
             case "battery": return formatWatts(r.batCurrentUa, r.batVoltageUv, r.batStatus);
             case "ram":     return formatRam(r.memTotalKb, r.memAvailKb);
@@ -680,10 +722,12 @@ public final class Telemetry {
     /**
      * The bar fill 0-100 for a gauge, or -1 for no bar.
      *
-     * CPU and GPU are scaled against their own maxima where those are known.
-     * The CPU's comes from {@code cpuinfo_max_freq} per policy; the GPU has no
-     * reachable maximum when its frequency node itself is barely reachable, so
-     * it gets no bar rather than a bar against a guessed ceiling.
+     * The CPU's ceiling comes from {@code cpuinfo_max_freq} per policy. The
+     * GPU's is simply 100, because the reading is a utilisation and not a
+     * frequency. Battery power gets no bar at all: there is no honest ceiling
+     * for it - the draw depends on what is plugged in, and this device cannot
+     * even negotiate PD while adb occupies the port - and a bar against a
+     * guessed maximum would imply a limit that is not real.
      */
     public static int gaugePercent(String key, Readings r, Fps.Sample fps, Layout l) {
         if (key == null || r == null) return -1;
@@ -694,10 +738,11 @@ public final class Telemetry {
         switch (key) {
             case "fps":     return Fps.percent(fps);
             case "cpu":     return percent(r.cpuMaxKhz(), l == null ? ABSENT : l.cpuMaxKhzCeiling);
+            case "gpu":     return percent(r.gpuBusyPct, 100);
             case "fan":     return percent(r.fanPwm, 255);
             case "ram":     return (r.memTotalKb == ABSENT || r.memAvailKb == ABSENT)
                                    ? -1 : percent(r.memTotalKb - r.memAvailKb, r.memTotalKb);
-            default:        return -1;      // GPU and power have no known ceiling
+            default:        return -1;      // power has no meaningful ceiling
         }
     }
 
