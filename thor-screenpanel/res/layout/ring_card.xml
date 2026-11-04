@@ -7,7 +7,7 @@
     android:layout_height="wrap_content"
     android:background="@drawable/panel_card"
     android:orientation="horizontal"
-    android:gravity="center_vertical"
+    android:gravity="center"
     android:baselineAligned="false"
     android:paddingTop="14dp"
     android:paddingBottom="14dp" />
