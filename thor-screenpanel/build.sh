@@ -14,7 +14,7 @@ TARGET_SDK=37          # Android 17. Play Protect blocks installs targeting
 # Version. versionCode must be an integer and must only ever increase, because
 # Android refuses to install an APK whose code is lower than the installed one.
 # Derived from the semver so the two can never drift: 0.5.0 -> 500.
-VERSION=0.7.0
+VERSION=0.8.0
 VERSION_CODE=$(echo "$VERSION" | awk -F. '{ printf "%d", $1*10000 + $2*100 + $3 }')
                        # older releases on this device.
 
@@ -46,6 +46,7 @@ javac --release 17 -nowarn -d out/test \
     "src/$PKG_PATH/RefreshRate.java" "src/$PKG_PATH/SystemToggle.java" \
     "src/$PKG_PATH/CliMessage.java" "src/$PKG_PATH/Recovery.java" \
     "src/$PKG_PATH/RootClient.java" \
+    "src/$PKG_PATH/Telemetry.java" "src/$PKG_PATH/Fps.java" \
     "test/$PKG_PATH/TestMain.java" || { echo "test compile failed"; exit 1; }
 java -cp out/test com.thorfeatures.screenpanel.TestMain || { echo "build aborted: unit tests failed"; exit 1; }
 ./tests/test_action.sh || { echo "build aborted: action script tests failed"; exit 1; }

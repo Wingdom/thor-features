@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 119 tests
+feature on the host with no device and no root — that is how all 333 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -133,6 +133,107 @@ Decided 2026-10-27, after the panel grew a `screenmove status` pre-check so
 independently at the time, and a copy of its rules inside the panel is a second
 opinion that goes stale.
 
+
+## The telemetry tab
+
+The panel has two tabs — **Controls** and **Telemetry** — and **Mode is in
+neither**. It sits below them and stays on screen in both, nearest the button.
+
+That is not a layout accident. The panel was deliberately one scrolling column
+rather than stock's tabs, because "a tap to reach the fan is a tap the
+physical button was supposed to save". A gauge card cannot be stacked onto the
+end of that and still leave Mode at the bottom, so one thing had to go behind
+a tab. The readings are the right thing: nobody presses a hardware button in
+order to look at a temperature.
+
+### Everything on it is a read
+
+No writes, no revert path, nothing to restore at the end of a session. The
+tab's whole risk surface is reading the wrong node or reading it too often.
+
+### Two commands, and the second one repeats
+
+Discovery resolves every path once. A tick then reads those paths. Both are a
+single `grep -H .` over a file list, which is one fork for any number of
+files — the same forks-not-bytes lesson that took `screenblank status` from
+482 ms to 179 ms with byte-identical output.
+
+`-H` is explicit rather than assumed. With a glob matching exactly one file,
+grep omits the filename prefix, and every line then parses as a value
+belonging to nothing.
+
+**Discovery is lazy**, on the first tap of the tab rather than on panel open.
+Open cost is the number this file spends most of its length on; most opens
+never look at the gauges.
+
+### The tick rate is a decision, not a default
+
+One second. The reason is not the panel's own cost — it is that this project
+has already had a measurement heat its own subject: a `fanctl selftest` that
+re-ran discovery per item took over fourteen minutes and spun the fan up by
+itself. One second is also the slowest rate that still reads as live, and
+every reading except CPU clock moves far slower than that.
+
+The tick reschedules **after** each reply rather than on a fixed period. A
+fixed `postDelayed` loop would queue reads behind each other the moment one
+exceeded the interval, and the queue would never drain; this way a slow device
+ticks more slowly instead.
+
+Ticks run only while the tab is in front and the activity is resumed.
+
+### Resolve by type, never by index
+
+Thermal zone and cooling device numbers are assigned at boot. The fan's
+cooling device was 34 on one boot and 35 on another on this same build.
+Nothing in the telemetry code names an index: discovery reads every `type`
+file and derives the paths from whichever matched.
+
+### What this hardware will not give you
+
+| | |
+|---|---|
+| **Fan RPM** | Does not exist. The fan is the kernel's `pwm-fan` driver bound at `pm8550@1/pwm-fan@0`, and `pwm1` is its only attribute — `find /sys -name 'fan*'` returns nothing outside the device tree. Upstream `pwm-fan` registers `fan1_input` only when the device tree gives it a tach interrupt, and this one does not. Duty and cooling state are the whole picture. |
+| **GPU clock** | `/sys/class/kgsl/` is `Permission denied` under SELinux despite uid 0. Several candidate paths are probed and the row appears only if one answers. |
+
+Both of these are reasons the gauge list is built from what discovery actually
+found rather than from a fixed list. A GPU row reading `0 MHz` would look like
+an idle GPU rather than an absent one.
+
+### Why `usb-therm` has its own row
+
+Not because it runs hot. It is an open question on this hardware: `fanctl`'s
+60 C quiet trip is reasoned rather than measured, and no log has caught that
+sensor above 42 C. It is driven mainly by **charge current**, not SoC load, so
+a live reading on the panel during a real charge-plus-game session is the
+evidence that has been missing. Note that PD cannot negotiate while adb
+occupies the USB-C port, so a full-rate test needs `adb tcpip` over WiFi.
+
+## Why there is no frame-rate counter yet
+
+`Choreographer` is the obvious answer and it is the wrong one. It measures the
+frame rate of the process that registers it, so in the panel it measures the
+panel — a static card on the 3.92" screen, which will report a steady 60 while
+a game stutters at 24 on the other screen. A gauge that is always plausible
+and never right is worse than no gauge.
+
+A real counter has to read SurfaceFlinger, which is the only process that sees
+every application's frames. The parsing and layer-selection logic for that is
+written (`Fps.java`) and host-tested, but **nothing in it has run against a
+device**, and three things are unknown: whether `dumpsys SurfaceFlinger
+--latency` still answers on Android 17, whether the panel's root context may
+call it, and whether it is cheap enough that measuring frames does not cost
+frames.
+
+One finding is already banked, and it is the trap to avoid: **the panel itself
+holds focus while it is open.** It is a focused window on the bottom screen
+taking taps, so a flat `dumpsys window | grep mCurrentFocus` finds the panel,
+and a counter built on that measures this card. Focus has to be read per
+display, from inside a display's section of `dumpsys window displays` — the
+same structural trap `screenmove status` documents from the other end, where
+the focused display id appears nowhere but the full dump.
+
+If the probe says no, the honest outcome is to record it as unreachable rather
+than ship a row that always reads an em dash.
 
 ## What the button does
 

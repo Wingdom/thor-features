@@ -859,8 +859,446 @@ public final class TestMain {
                   !cmd.matches(".*[;&|`$<>(){}\\\\\"'\n].*"));
         }
 
+        telemetryTests();
+        fpsTests();
+
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");
         if (fail != 0) System.exit(1);
+    }
+
+    /**
+     * A discovery reply shaped like this device's.
+     *
+     * The values are the ones actually read off the Thor on 2026-11-03, not
+     * invented: three cpufreq policies rather than eight cores, the fan at
+     * cooling_device34, and hwmon0 exposing pwm1 and nothing else. The GPU
+     * candidates are absent from this fixture because every one of them
+     * answered "Permission denied" under SELinux despite uid 0 - which is the
+     * case the gauge list has to survive, so it is the default fixture rather
+     * than an edge case.
+     */
+    private static final String DISCOVERY =
+        "/sys/class/thermal/thermal_zone0/type:aoss-0\n"
+      + "/sys/class/thermal/thermal_zone1/type:cpu-0-0-usr\n"
+      + "/sys/class/thermal/thermal_zone2/type:cpu-1-0-usr\n"
+      + "/sys/class/thermal/thermal_zone3/type:gpuss-0-usr\n"
+      + "/sys/class/thermal/thermal_zone4/type:quiet-therm\n"
+      + "/sys/class/thermal/thermal_zone5/type:usb-therm\n"
+      + "/sys/class/thermal/thermal_zone6/type:sys-therm-batt\n"
+      + "/sys/class/thermal/cooling_device7/type:thermal-cpufreq-0\n"
+      + "/sys/class/thermal/cooling_device34/type:pwm-fan\n"
+      + "/sys/class/thermal/cooling_device40/type:thermal-devfreq-0\n"
+      + "/sys/devices/system/cpu/cpufreq/policy0/affected_cpus:0 1 2\n"
+      + "/sys/devices/system/cpu/cpufreq/policy3/affected_cpus:3 4 5 6\n"
+      + "/sys/devices/system/cpu/cpufreq/policy7/affected_cpus:7\n"
+      + "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq:2016000\n"
+      + "/sys/devices/system/cpu/cpufreq/policy3/cpuinfo_max_freq:2803200\n"
+      + "/sys/devices/system/cpu/cpufreq/policy7/cpuinfo_max_freq:3187200\n";
+
+    private static void telemetryTests() {
+        System.out.println();
+        System.out.println("telemetry");
+
+        // --- what may enter a command ---------------------------------------
+        check("a sysfs path is safe", true,
+              Telemetry.isSafePath("/sys/class/thermal/thermal_zone0/temp"));
+        check("a path with a comma is safe (devfreq names have them)", true,
+              Telemetry.isSafePath("/sys/class/devfreq/3d00000.qcom,kgsl-3d0/cur_freq"));
+        // A colon would make the reply format ambiguous: the parser splits
+        // path from value on the first colon, so a path containing one would
+        // be truncated and its value silently misread.
+        check("a path with a colon is refused", false,
+              Telemetry.isSafePath("/sys/class/foo:bar/temp"));
+        check("a path with a space is refused", false,
+              Telemetry.isSafePath("/sys/class/foo bar/temp"));
+        check("a path with a semicolon is refused", false,
+              Telemetry.isSafePath("/sys/x;reboot/temp"));
+        check("a path with a backtick is refused", false,
+              Telemetry.isSafePath("/sys/x`id`/temp"));
+        check("traversal is refused", false,
+              Telemetry.isSafePath("/sys/../etc/passwd"));
+        check("a path outside sys and proc is refused", false,
+              Telemetry.isSafePath("/data/local/tmp/x"));
+        check("null is refused", false, Telemetry.isSafePath(null));
+
+        // --- grouping thermal zones -----------------------------------------
+        check("cpu-0-0-usr is a CPU zone",   "CPU",     Telemetry.groupFor("cpu-0-0-usr"));
+        check("cpuss-0 is a CPU zone",       "CPU",     Telemetry.groupFor("cpuss-0"));
+        check("gpuss-0-usr is a GPU zone",   "GPU",     Telemetry.groupFor("gpuss-0-usr"));
+        check("quiet-therm is the skin",     "Skin",    Telemetry.groupFor("quiet-therm"));
+        check("usb-therm is its own gauge",  "USB",     Telemetry.groupFor("usb-therm"));
+        check("sys-therm-batt is battery",   "Battery", Telemetry.groupFor("sys-therm-batt"));
+        check("aoss-0 is not shown",         null,      Telemetry.groupFor("aoss-0"));
+        check("null type is not shown",      null,      Telemetry.groupFor(null));
+
+        // --- discovery -------------------------------------------------------
+        // -H must be explicit. Without it, a glob matching exactly one file
+        // makes grep omit the path prefix, and every line then parses as a
+        // value belonging to nothing.
+        check("discovery forces the filename prefix", true,
+              Telemetry.discoverCommand().contains("grep -H "));
+        check("discovery probes the GPU candidates", true,
+              Telemetry.discoverCommand().contains(Telemetry.GPU_FREQ_CANDIDATES[0]));
+
+        Telemetry.Layout l = Telemetry.parseDiscovery(DISCOVERY);
+        check("three policies, not eight cores", 3, l.policies.size());
+        check("policy0 covers the little cluster", "0 1 2", l.policies.get(0).cpus);
+        check("policy7 reads its own current freq",
+              "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq",
+              l.policies.get(2).curPath);
+        // The ceiling is the fastest cluster's, so the bar does not peg when
+        // the prime core boosts past the others' maxima.
+        check("the CPU ceiling is the prime core's", 3187200L, l.cpuMaxKhzCeiling);
+
+        // The fan is found by its driver's name. It was cooling_device34 on
+        // this boot and 35 on another, so an index would have been wrong once.
+        check("the fan is resolved by type, not index",
+              "/sys/class/thermal/cooling_device34/cur_state", l.fanStatePath);
+        check("the fan is present", true, l.hasFan());
+        // The other cooling devices must not be mistaken for the fan. One is
+        // listed before it and one after, deliberately: an earlier version of
+        // this fixture had only the earlier one, and because the parser
+        // overwrites as it goes, the fan still came out right even with the
+        // type check deleted. The test passed on broken code. The device after
+        // the fan is what makes the assertion mean something.
+        check("a cooling device before the fan is ignored", true,
+              !l.fanStatePath.contains("cooling_device7"));
+        check("a cooling device after the fan is ignored", true,
+              !l.fanStatePath.contains("cooling_device40"));
+
+        check("two CPU zones were grouped", 2, l.zones.get("CPU").size());
+        check("the GPU zone was grouped", 1, l.zones.get("GPU").size());
+        check("gauges are ordered, not zone-ordered", "[CPU, GPU, Skin, USB, Battery]",
+              l.zones.keySet().toString());
+        // Every GPU frequency candidate was denied on this build.
+        check("no GPU frequency node was readable", false, l.hasGpuFreq());
+        check("a layout with sensors is not empty", false, l.isEmpty());
+        check("root refused means an empty layout", true,
+              Telemetry.parseDiscovery("").isEmpty());
+
+        // --- the tick command ------------------------------------------------
+        String tickCmd = Telemetry.tickCommand(l);
+        check("the tick reads policy frequencies", true,
+              tickCmd.contains("/sys/devices/system/cpu/cpufreq/policy3/scaling_cur_freq"));
+        check("the tick reads the fan duty", true,
+              tickCmd.contains("/sys/class/hwmon/hwmon0/pwm1"));
+        check("the tick reads battery current", true,
+              tickCmd.contains("/sys/class/power_supply/battery/current_now"));
+        check("the tick narrows meminfo rather than dumping it", true,
+              tickCmd.contains("^(MemTotal|MemAvailable):"));
+        // One exchange over the session, two forks. The session wraps the whole
+        // string in one subshell, so a semicolon costs no extra round trip.
+        check("meminfo shares one exchange", 1,
+              tickCmd.split(";", -1).length - 1);
+        check("the tick asks for no GPU node it cannot read", false,
+              tickCmd.contains("kgsl"));
+
+        // The same invariant the rest of the panel's commands have. Device-read
+        // directory names reach this string, so it is the one place that could
+        // lose it.
+        check("no shell metacharacter in the tick command", true,
+              !tickCmd.replace("2>/dev/null", "").replace("^(MemTotal|MemAvailable):", "")
+                      .matches(".*[`$<>\\\\\"].*"));
+
+        // A path discovery should never have produced must not reach a command.
+        Telemetry.Layout poisoned = Telemetry.parseDiscovery(
+              "/sys/class/thermal/thermal_zone9;id/type:cpu-9-0-usr\n");
+        check("an unsafe discovered path is dropped", 0, poisoned.zones.size());
+
+        // --- parsing a tick --------------------------------------------------
+        String tickOut =
+            "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq:2016000\n"
+          + "/sys/devices/system/cpu/cpufreq/policy3/scaling_cur_freq:2707200\n"
+          + "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq:864000\n"
+          + "/sys/class/thermal/thermal_zone1/temp:42000\n"
+          + "/sys/class/thermal/thermal_zone2/temp:47500\n"
+          + "/sys/class/thermal/thermal_zone3/temp:39000\n"
+          + "/sys/class/thermal/thermal_zone4/temp:35000\n"
+          + "/sys/class/thermal/thermal_zone5/temp:41000\n"
+          + "/sys/class/thermal/thermal_zone6/temp:33000\n"
+          + "/sys/class/hwmon/hwmon0/pwm1:96\n"
+          + "/sys/class/thermal/cooling_device34/cur_state:3\n"
+          + "/sys/class/thermal/cooling_device34/max_state:8\n"
+          + "/sys/class/power_supply/battery/current_now:-1250000\n"
+          + "/sys/class/power_supply/battery/voltage_now:3912000\n"
+          + "/sys/class/power_supply/battery/status:Discharging\n"
+          + "/sys/class/power_supply/battery/capacity:74\n"
+          + "/proc/meminfo:MemTotal:       16303292 kB\n"
+          + "/proc/meminfo:MemAvailable:    9804112 kB\n";
+
+        Telemetry.Readings r = Telemetry.parseTick(tickOut, l);
+        check("three cluster frequencies", 3, r.cpuKhz.size());
+        // The gauge shows the fastest cluster, which is what "CPU speed" means
+        // when three clusters run at three different clocks.
+        check("the CPU gauge takes the fastest cluster", 2707200L, r.cpuMaxKhz());
+        // Of two CPU zones at 42.0 and 47.5, the hotter is the one that matters.
+        check("a zone group reports its hottest", 47500L, (long) r.tempMilliC.get("CPU"));
+        check("the skin zone was read", 35000L, (long) r.tempMilliC.get("Skin"));
+        check("fan duty was read", 96L, r.fanPwm);
+        check("fan state was read", 3L, r.fanState);
+        check("battery status is a word, not a sign", "Discharging", r.batStatus);
+        check("meminfo total survived its second colon", 16303292L, r.memTotalKb);
+        check("meminfo available survived too", 9804112L, r.memAvailKb);
+        check("an absent GPU stays absent", Telemetry.ABSENT, r.gpuHz);
+
+        Telemetry.Readings empty = Telemetry.parseTick("", l);
+        check("an empty reply yields no CPU reading", Telemetry.ABSENT, empty.cpuMaxKhz());
+        check("an empty reply yields no fan reading", Telemetry.ABSENT, empty.fanPwm);
+        check("an empty reply still lists the zone groups", 5, empty.tempMilliC.size());
+        check("an empty reply's zone reads absent", Telemetry.ABSENT,
+              (long) empty.tempMilliC.get("CPU"));
+
+        // A line for a path the layout never asked for cannot land in a gauge.
+        Telemetry.Readings spoofed = Telemetry.parseTick(
+              "/sys/class/thermal/thermal_zone99/temp:99000\n", l);
+        check("an unrequested path is ignored", Telemetry.ABSENT,
+              (long) spoofed.tempMilliC.get("CPU"));
+
+        // --- units ------------------------------------------------------------
+        // Milli-degrees and whole degrees are indistinguishable from the number
+        // alone, and getting it wrong is silent: 45 would render as 0 C, which
+        // reads as a cold phone rather than as a bug.
+        check("milli-degrees pass through",  45000L, Telemetry.normalizeTempMilliC(45000));
+        check("whole degrees are scaled up", 45000L, Telemetry.normalizeTempMilliC(45));
+        check("zero stays zero",                 0L, Telemetry.normalizeTempMilliC(0));
+        check("1000 is already milli",        1000L, Telemetry.normalizeTempMilliC(1000));
+        check("a negative whole degree scales", -5000L, Telemetry.normalizeTempMilliC(-5));
+
+        check("busy percent drops its unit", 42L, Telemetry.parseBusyPercent("42 %"));
+        check("busy percent without a space", 42L, Telemetry.parseBusyPercent("42%"));
+        check("busy percent of nothing", Telemetry.ABSENT, Telemetry.parseBusyPercent(""));
+
+        // --- formatting -------------------------------------------------------
+        check("cpu freq in GHz",  "2.02 GHz", Telemetry.formatCpuFreq(2016000));
+        check("cpu freq in MHz",  "864 MHz",  Telemetry.formatCpuFreq(864000));
+        check("cpu freq absent",  Telemetry.NONE, Telemetry.formatCpuFreq(Telemetry.ABSENT));
+        // devfreq reports Hz where cpufreq reports kHz - a thousand-fold
+        // difference between two nodes that look alike.
+        check("gpu freq is Hz, not kHz", "680 MHz", Telemetry.formatGpuFreq(680000000L));
+        check("gpu freq absent", Telemetry.NONE, Telemetry.formatGpuFreq(Telemetry.ABSENT));
+        check("temperature rounds to a degree", "48\u00b0C", Telemetry.formatTemp(47500));
+        check("temperature absent", Telemetry.NONE, Telemetry.formatTemp(Telemetry.ABSENT));
+
+        check("fan shows duty and state", "38%  3/8", Telemetry.formatFan(96, 3, 8));
+        // "off" rather than "0%": a stopped fan is a state, and 0% reads like a
+        // fan that is running at nothing.
+        check("a stopped fan says off", "off  0/8", Telemetry.formatFan(0, 0, 8));
+        check("fan absent", Telemetry.NONE,
+              Telemetry.formatFan(Telemetry.ABSENT, Telemetry.ABSENT, Telemetry.ABSENT));
+
+        // 1.25 A at 3.912 V = 4.89 W. The sign comes from status, never from
+        // the sign of current_now, whose convention on this device is unverified.
+        check("watts from current and voltage", "\u22124.89 W",
+              Telemetry.formatWatts(-1250000L, 3912000L, "Discharging"));
+        check("charging is positive regardless of the current's sign", "+4.89 W",
+              Telemetry.formatWatts(-1250000L, 3912000L, "Charging"));
+        check("a positive current discharging is still negative", "\u22124.89 W",
+              Telemetry.formatWatts(1250000L, 3912000L, "Discharging"));
+        check("an unknown status gets no sign", "4.89 W",
+              Telemetry.formatWatts(1250000L, 3912000L, "Not charging"));
+        check("watts absent", Telemetry.NONE,
+              Telemetry.formatWatts(Telemetry.ABSENT, 3912000L, "Discharging"));
+
+        check("ram used of total", "6.2 / 15.5 GiB", Telemetry.formatRam(16303292L, 9804112L));
+        check("ram absent", Telemetry.NONE, Telemetry.formatRam(Telemetry.ABSENT, 1L));
+
+        // --- bars --------------------------------------------------------------
+        check("a bar at half", 50, Telemetry.percent(50, 100));
+        check("a bar clamps high", 100, Telemetry.percent(150, 100));
+        check("a bar with no ceiling has no fill", -1, Telemetry.percent(50, 0));
+        check("a bar of nothing", -1, Telemetry.percent(Telemetry.ABSENT, 100));
+        // 30 C empty, 90 C full. Scaled to a fixed window rather than a zone's
+        // crit trip, several of which sit far above anything the chassis reaches.
+        check("30 C reads empty",   0,  Telemetry.tempPercent(30000));
+        check("60 C reads half",    50, Telemetry.tempPercent(60000));
+        check("90 C reads full",    100, Telemetry.tempPercent(90000));
+        check("25 C clamps to empty", 0, Telemetry.tempPercent(25000));
+        check("no temperature, no bar", -1, Telemetry.tempPercent(Telemetry.ABSENT));
+
+        // --- which gauges ------------------------------------------------------
+        List<String> keys = Telemetry.gaugeKeys(l, false);
+        check("no GPU row when its node is unreadable", false, keys.contains("gpu"));
+        check("the gauges this device offers",
+              "[cpu, fan, temp:CPU, temp:Skin, temp:USB, battery, ram]", keys.toString());
+        check("no FPS row until phase 2 proves it", false, keys.contains("fps"));
+        check("FPS leads when it works", "fps", Telemetry.gaugeKeys(l, true).get(0));
+        check("the odd row goes left", 4, Telemetry.leftColumnCount(7));
+        check("an even split is even", 4, Telemetry.leftColumnCount(8));
+        check("one gauge is one column", 1, Telemetry.leftColumnCount(1));
+
+        check("a temperature label", "CPU temp", Telemetry.gaugeLabel("temp:CPU"));
+        check("usb-therm keeps its own name", "USB", Telemetry.gaugeLabel("temp:USB"));
+        check("the battery row is called Power", "Power", Telemetry.gaugeLabel("battery"));
+
+        check("a gauge renders its reading", "2.71 GHz", Telemetry.gaugeValue("cpu", r, null));
+        check("a temperature gauge renders", "48\u00b0C",
+              Telemetry.gaugeValue("temp:CPU", r, null));
+        check("a gauge with no group reads absent", Telemetry.NONE,
+              Telemetry.gaugeValue("temp:Nonexistent", r, null));
+        // The CPU bar is scaled to the prime core's ceiling: 2707200/3187200.
+        check("the CPU bar uses the discovered ceiling", 85,
+              Telemetry.gaugePercent("cpu", r, null, l));
+        check("the fan bar is duty out of 255", 38,
+              Telemetry.gaugePercent("fan", r, null, l));
+        check("the RAM bar is used out of total", 40,
+              Telemetry.gaugePercent("ram", r, null, l));
+        // No reachable maximum, so no bar rather than a bar against a guess.
+        check("power gets no bar", -1, Telemetry.gaugePercent("battery", r, null, l));
+        check("gpu gets no bar", -1, Telemetry.gaugePercent("gpu", r, null, l));
+
+        // --- when to tick -------------------------------------------------------
+        check("tick on the telemetry tab while resumed", true, Telemetry.shouldPoll(true, true));
+        check("no tick on another tab", false, Telemetry.shouldPoll(false, true));
+        check("no tick while paused", false, Telemetry.shouldPoll(true, false));
+        check("no tick when neither", false, Telemetry.shouldPoll(false, false));
+        // One second, chosen so the gauges cannot be reading their own heat.
+        check("the tick rate is one second", 1000L, Telemetry.TICK_MS);
+    }
+
+    private static void fpsTests() {
+        System.out.println();
+        System.out.println("fps (phase 2 - parsers only, nothing device-verified)");
+
+        // --- focus, per display ---------------------------------------------
+        check("a package out of a focus line", "com.foo.game",
+              Fps.parseFocusedPackage(
+                  "mCurrentFocus=Window{a1b2c3 u0 com.foo.game/com.foo.game.MainActivity}"));
+        check("a package out of mFocusedApp", "com.foo.game",
+              Fps.parseFocusedPackage(
+                  "mFocusedApp=ActivityRecord{d4 u0 com.foo.game/.MainActivity t42}"));
+        check("no package in a line without one", null,
+              Fps.parseFocusedPackage("mCurrentFocus=null"));
+
+        // THE trap this file exists to avoid. The panel is itself focused, on
+        // the bottom screen, while it is open - so the focused package without
+        // a display is the panel, and a counter built on it would measure this
+        // card's static contents and report a confident, wrong 60.
+        String displays =
+            "Display: mDisplayId=0\n"
+          + "  mCurrentFocus=Window{a1 u0 com.foo.game/com.foo.game.MainActivity}\n"
+          + "  mFocusedApp=ActivityRecord{a2 u0 com.foo.game/.MainActivity t9}\n"
+          + "Display: mDisplayId=1\n"
+          + "  mCurrentFocus=Window{b1 u0 com.thorfeatures.screenpanel/"
+          + "com.thorfeatures.screenpanel.PanelActivity}\n";
+        check("display 0 is the game", "com.foo.game",
+              Fps.parseFocusedPackageOnDisplay(displays, 0));
+        check("display 1 is the panel itself", "com.thorfeatures.screenpanel",
+              Fps.parseFocusedPackageOnDisplay(displays, 1));
+        check("a display with no section has no focus", null,
+              Fps.parseFocusedPackageOnDisplay(displays, 2));
+        // A focus line before any display header belongs to no display, and
+        // guessing it means display 0 is how the panel gets picked up again.
+        check("a focus line outside any section is ignored", null,
+              Fps.parseFocusedPackageOnDisplay(
+                  "mCurrentFocus=Window{z1 u0 com.thorfeatures.screenpanel/.PanelActivity}\n", 0));
+        check("no dump, no focus", null, Fps.parseFocusedPackageOnDisplay(null, 0));
+
+        // --- picking the layer ------------------------------------------------
+        String list =
+            "com.foo.game/com.foo.game.MainActivity#0\n"
+          + "SurfaceView[com.foo.game/com.foo.game.MainActivity](BLAST)#0\n"
+          + "Splash Screen com.foo.game#0\n"
+          + "NavigationBar0#0\n";
+        // The SurfaceView wins: that is what a game renders into, and the
+        // activity's own layer above it would report the UI's rate instead.
+        check("the SurfaceView layer is preferred",
+              "SurfaceView[com.foo.game/com.foo.game.MainActivity](BLAST)#0",
+              Fps.pickLayer(list, "com.foo.game"));
+        check("the activity layer is the fallback",
+              "com.foo.game/com.foo.game.MainActivity#0",
+              Fps.pickLayer("com.foo.game/com.foo.game.MainActivity#0\n", "com.foo.game"));
+        check("a splash screen is never the answer", null,
+              Fps.pickLayer("Splash Screen com.foo.game#0\n", "com.foo.game"));
+        check("an unlisted package has no layer", null,
+              Fps.pickLayer(list, "com.other.app"));
+        check("no list, no layer", null, Fps.pickLayer(null, "com.foo.game"));
+
+        // --- quoting a layer name ---------------------------------------------
+        // Layer names carry brackets, hashes and spaces, so this is the one
+        // command in the panel that cannot be built from literals.
+        check("a layer name is quoted whole",
+              "dumpsys SurfaceFlinger --latency 'SurfaceView[com.foo/.A](BLAST)#0' 2>/dev/null",
+              Fps.latencyCommand("SurfaceView[com.foo/.A](BLAST)#0"));
+        check("an embedded quote cannot escape the quoting",
+              "'it'\\''s'", Fps.shellQuote("it's"));
+        check("a sane layer is safe", true, Fps.isSafeLayer("SurfaceView[com.foo/.A]#0"));
+        // Quoting contains metacharacters but cannot contain a newline, which
+        // would end the command and begin another.
+        check("a newline in a layer name is refused", false,
+              Fps.isSafeLayer("layer\nrm -rf /"));
+        check("a control character is refused", false, Fps.isSafeLayer("layer\u0001"));
+        check("an empty layer name is refused", false, Fps.isSafeLayer(""));
+        check("an unsafe layer yields no command", null,
+              Fps.latencyCommand("layer\nid"));
+
+        // --- parsing the frame timestamps --------------------------------------
+        // 16666667 ns is 60 Hz. Five present timestamps 16.667 ms apart bound
+        // four intervals, so the rate is 4 / 0.0666668 s = 60 fps.
+        String latency =
+            "16666667\n"
+          + "0 0 0\n".replace("0 0 0", "1000000000 1000000000 1000000000")
+          + "1016666667 1016666667 1016666667\n"
+          + "1033333334 1033333334 1033333334\n"
+          + "1050000001 1050000001 1050000001\n"
+          + "1066666668 1066666668 1066666668\n";
+        Fps.Sample s = Fps.parseLatency(latency);
+        check("the refresh rate comes off the first line", 60L, Math.round(s.refreshHz));
+        check("five timestamps bound four intervals", 5, s.frames);
+        // Dividing by the frame count instead of the interval count would give
+        // 75 here - and the error grows as the window shortens, which is
+        // exactly the case of a game that has just launched.
+        check("the rate is intervals, not frames", 60L, Math.round(s.fps));
+        check("the bar is scaled to the panel's own rate", 100, Fps.percent(s));
+        check("a sample formats as whole frames", "60 fps", Fps.format(s));
+
+        // A 30 fps game on a 60 Hz panel reads half full, not full.
+        String half =
+            "16666667\n"
+          + "1000000000 1000000000 1000000000\n"
+          + "1033333334 1033333334 1033333334\n"
+          + "1066666668 1066666668 1066666668\n";
+        Fps.Sample s30 = Fps.parseLatency(half);
+        check("a 30 fps game reads 30", 30L, Math.round(s30.fps));
+        check("and fills half the bar", 50, Fps.percent(s30));
+
+        // INT64_MAX marks a frame with no timestamp yet. Left in, it would put
+        // a time 292 years ahead into the window and compute ~0 fps from a
+        // perfectly healthy game.
+        String pending =
+            "16666667\n"
+          + "1000000000 1000000000 1000000000\n"
+          + "1016666667 1016666667 1016666667\n"
+          + "9223372036854775807 9223372036854775807 9223372036854775807\n";
+        check("pending frames are dropped", 2, Fps.parseLatency(pending).frames);
+        check("and the rate comes from the real ones", 60L,
+              Math.round(Fps.parseLatency(pending).fps));
+
+        check("zero timestamps are dropped", 0,
+              Fps.parseLatency("16666667\n0 0 0\n0 0 0\n").frames);
+        check("one frame is not a rate", Fps.ABSENT,
+              (long) Fps.parseLatency("16666667\n1000000000 1000000000 1000000000\n").fps);
+        check("an empty dump is no sample", Fps.ABSENT, (long) Fps.parseLatency("").fps);
+        check("a null dump is no sample", Fps.ABSENT, (long) Fps.parseLatency(null).fps);
+        check("no sample shows an em dash", Telemetry.NONE, Fps.format(Fps.NO_SAMPLE));
+        check("no sample has no bar", -1, Fps.percent(Fps.NO_SAMPLE));
+
+        // The middle column is the one that is a frame rate: "desired" is the
+        // app's intent and "ready" is when its buffer was finished, and a game
+        // that renders early and waits for vsync has a "ready" rate far above
+        // anything a person sees.
+        String columns =
+            "16666667\n"
+          + "500000000 1000000000 900000000\n"
+          + "508333333 1016666667 905000000\n"
+          + "516666666 1033333334 910000000\n";
+        check("the rate comes from actual-present, not desired or ready", 60L,
+              Math.round(Fps.parseLatency(columns).fps));
+
+        // A dump with no period still gives a rate; only the bar loses its top.
+        Fps.Sample noPeriod = Fps.parseLatency(
+            "0\n1000000000 1000000000 1000000000\n1033333334 1033333334 1033333334\n");
+        check("a missing period still yields a rate", 30L, Math.round(noPeriod.fps));
+        check("and the bar falls back to 60", 50, Fps.percent(noPeriod));
     }
 }

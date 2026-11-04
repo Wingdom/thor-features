@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The telemetry tab's card: two columns of gauges, filled at runtime.
+
+     Two columns rather than one because the bottom screen is 1240x1080 - wide
+     and short. A single column of eight gauges would be taller than the card
+     has room for once the Mode row below it is accounted for, and Mode losing
+     its place at the bottom is the one thing this layout may not do.
+
+     The columns are empty here. PanelActivity inflates a gauge_row into them
+     per reading the device turned out to have, splitting the ordered list with
+     Telemetry.leftColumnCount so the arrangement is decided by host-tested
+     logic rather than by this file. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="6dp"
+    android:paddingBottom="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false">
+
+        <LinearLayout
+            android:id="@+id/gauge_col_left"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:id="@+id/gauge_col_right"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical" />
+    </LinearLayout>
+
+    <!-- Shown instead of the columns when the device answered nothing at all,
+         so an empty card cannot look like a card of zeroes. -->
+    <TextView
+        android:id="@+id/gauge_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:textColor="@color/panel_on_surface_dim"
+        android:textSize="12sp"
+        android:visibility="gone"
+        android:text="@string/telemetry_none" />
+</LinearLayout>
