@@ -20,6 +20,7 @@
          the other screen, and a palette derived from the wallpaper would make
          four gauges four shades of the same colour. Chosen to stay legible on
          both the light and the dark card. -->
+    <color name="gauge_fps">#FFD54F</color>
     <color name="gauge_cpu">#FF4D8D</color>
     <color name="gauge_gpu">#38D6E8</color>
     <color name="gauge_pwr">#FFA62B</color>

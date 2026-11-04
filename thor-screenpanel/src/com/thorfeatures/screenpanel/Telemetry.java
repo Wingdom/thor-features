@@ -777,8 +777,14 @@ public final class Telemetry {
      * a genuine zero never look alike. The GPU is the case that matters: its
      * sysfs directory is readable only through the panel's own transport.
      */
-    public static List<String> ringKeys(Layout l) {
+    public static List<String> ringKeys(Layout l, boolean fpsAvailable) {
         List<String> keys = new ArrayList<>();
+        // FPS leads when it works: it is the number a person opens this tab
+        // to see, and the only one that is about the game rather than the
+        // machine. It is absent far more often than not - it needs a focused
+        // app on the top screen that is actually drawing - so it earns its
+        // place by being there, not by holding a slot that reads blank.
+        if (fpsAvailable)          keys.add("fps");
         if (!l.policies.isEmpty()) keys.add("cpu");
         if (l.hasGpu())            keys.add("gpu");
         keys.add("battery");
@@ -834,6 +840,7 @@ public final class Telemetry {
     public static String ringLabel(String key) {
         if (key == null) return "";
         switch (key) {
+            case "fps":     return "FPS";
             case "cpu":     return "CPU";
             case "gpu":     return "GPU";
             case "battery": return "PWR";
@@ -856,8 +863,13 @@ public final class Telemetry {
     public static final double PWR_FULL_SCALE_W = 25.0;
 
     /** The large figure in the middle of a ring, with no unit. */
-    public static String ringBig(String key, Readings r) {
-        if (key == null || r == null) return NONE;
+    public static String ringBig(String key, Readings r, Fps.Sample fps) {
+        if (key == null) return NONE;
+        if (key.equals("fps")) {
+            return fps == null || fps.fps == ABSENT
+                   ? NONE : String.valueOf(Math.round(fps.fps));
+        }
+        if (r == null) return NONE;
         switch (key) {
             case "cpu":     return cpuFreqValue(r.cpuMaxKhz());
             case "gpu":     return r.gpuBusyPct == ABSENT
@@ -881,8 +893,16 @@ public final class Telemetry {
      * the clock - so the gauge never changes meaning between ticks, including
      * the first one, where the load is not computable yet.
      */
-    public static String ringSub(String key, Readings r) {
-        if (key == null || r == null) return "";
+    public static String ringSub(String key, Readings r, Fps.Sample fps) {
+        if (key == null) return "";
+        if (key.equals("fps")) {
+            // The panel's own rate, so the figure above reads as a fraction of
+            // what the screen can actually show: 119 of 120 is a game keeping
+            // up, and 119 alone does not say that.
+            if (fps == null || fps.refreshHz <= 0) return "fps";
+            return "/ " + Math.round(fps.refreshHz);
+        }
+        if (r == null) return "";
         switch (key) {
             case "cpu": {
                 String unit = cpuFreqUnit(r.cpuMaxKhz());
@@ -940,7 +960,11 @@ public final class Telemetry {
      * one reading with no ceiling to divide by; it gets
      * {@link #PWR_FULL_SCALE_W} and saturates there.
      */
-    public static float ringFraction(String key, Readings r, Layout l) {
+    public static float ringFraction(String key, Readings r, Layout l, Fps.Sample fps) {
+        if ("fps".equals(key)) {
+            int pct = Fps.percent(fps);
+            return pct < 0 ? -1f : pct / 100f;
+        }
         if ("battery".equals(key)) {
             if (r == null || r.batCurrentUa == ABSENT || r.batVoltageUv == ABSENT) return -1f;
             double w = Math.abs(r.batCurrentUa / 1e6) * (r.batVoltageUv / 1e6);

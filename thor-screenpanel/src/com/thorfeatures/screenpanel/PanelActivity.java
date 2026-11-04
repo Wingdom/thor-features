@@ -574,7 +574,7 @@ public final class PanelActivity extends Activity {
         // view draws a circle on min(width, height), so a cell wider than it
         // is tall still renders round.
         int ringHeight = Math.round(112 * getResources().getDisplayMetrics().density);
-        for (String key : Telemetry.ringKeys(l)) {
+        for (String key : Telemetry.ringKeys(l, fpsAvailable)) {
             RingGauge g = new RingGauge(this);
             g.setLayoutParams(new LinearLayout.LayoutParams(0, ringHeight, 1f));
             rings.addView(g);
@@ -612,6 +612,7 @@ public final class PanelActivity extends Activity {
             }
         }
         switch (key) {
+            case "fps":     return R.color.gauge_fps;
             case "gpu":     return R.color.gauge_gpu;
             case "battery": return R.color.gauge_pwr;
             case "ram":     return R.color.gauge_ram;
@@ -624,9 +625,9 @@ public final class PanelActivity extends Activity {
         for (Map.Entry<String, RingGauge> e : ringViews.entrySet()) {
             String key = e.getKey();
             e.getValue().set(Telemetry.ringLabel(key),
-                             Telemetry.ringBig(key, r),
-                             Telemetry.ringSub(key, r),
-                             Telemetry.ringFraction(key, r, l),
+                             Telemetry.ringBig(key, r, fps),
+                             Telemetry.ringSub(key, r, fps),
+                             Telemetry.ringFraction(key, r, l, fps),
                              getColor(colorRes(key)));
         }
         for (Map.Entry<String, View> e : barViews.entrySet()) {
@@ -648,20 +649,19 @@ public final class PanelActivity extends Activity {
     /**
      * Find out whether a frame counter is possible at all, once.
      *
-     * Phase 2 is an investigation, so this is a probe and not a feature: if it
-     * comes back with nothing, {@code fpsAvailable} stays false, no FPS row is
-     * built, and the rest of the telemetry tab is unaffected. The alternative
-     * - a row that always reads em dash - is the "looked alive and did
-     * nothing" failure this panel has already been bitten by.
+     * Phase 2 was an investigation, and this is the probe that settled it: if
+     * nothing answers, {@code fpsAvailable} stays false, no FPS ring is built,
+     * and the rest of the tab is unaffected. A ring that always read an em
+     * dash would be the "looked alive and did nothing" failure this panel has
+     * already been bitten by.
      *
-     * Runs on the io thread as part of discovery, because it is three
-     * `dumpsys` calls and `screenmove status` spends ~120 ms in three of them.
+     * Runs on the io thread as part of discovery. It is three `dumpsys` calls
+     * at worst and the layer one costs 35 ms, which is why this happens once
+     * rather than per tick.
      */
     private void probeFps(Telemetry.Layout l) {
         fpsLayer = resolveFpsLayer();
-        if (fpsLayer == null) return;
-        Fps.Sample s = readFps(fpsLayer);
-        fpsAvailable = s.fps != Fps.ABSENT;
+        fpsAvailable = fpsLayer != null;
     }
 
     /**
@@ -671,12 +671,22 @@ public final class PanelActivity extends Activity {
      * focused window while it is open - on the bottom screen, taking taps - so
      * "the focused package" without a display is the panel, and a counter
      * built on that would measure this card.
+     *
+     * A focused app owns several layers and only one of them has timestamps;
+     * the rest return the refresh period and nothing else. Rather than assert
+     * which, the candidates come back ranked and this takes the first that
+     * actually yields frames. That is self-correcting if a release reshuffles
+     * them, and the extra calls are paid here rather than on every tick.
      */
     private String resolveFpsLayer() {
         String pkg = Fps.parseFocusedPackageOnDisplay(
                 root.run(Fps.focusedPackageCommand()).out, ScreenMode.TOP);
         if (pkg == null || pkg.equals(getPackageName())) return null;
-        return Fps.pickLayer(root.run(Fps.listCommand()).out, pkg);
+        String list = root.run(Fps.listCommand()).out;
+        for (String layer : Fps.pickLayers(list, pkg)) {
+            if (readFps(layer).fps != Fps.ABSENT) return layer;
+        }
+        return null;
     }
 
     private Fps.Sample readFps(String layer) {

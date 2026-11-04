@@ -1205,7 +1205,7 @@ public final class TestMain {
         check("no temperature, no bar", -1, Telemetry.tempPercent(Telemetry.ABSENT));
 
         // --- which gauges ------------------------------------------------------
-        check("the four rings", "[cpu, gpu, battery, ram]", Telemetry.ringKeys(l).toString());
+        check("the four rings", "[cpu, gpu, battery, ram]", Telemetry.ringKeys(l, false).toString());
         check("the bars beneath", "[temp:CPU, temp:Board, temp:USB, fan]",
               Telemetry.barKeys(l).toString());
         // A build where the GPU really is unreadable loses its ring rather
@@ -1213,7 +1213,7 @@ public final class TestMain {
         Telemetry.Layout noGpu = Telemetry.parseDiscovery(
               DISCOVERY.replace("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage:0 %\n", ""));
         check("no GPU ring when its node is unreadable", "[cpu, battery, ram]",
-              Telemetry.ringKeys(noGpu).toString());
+              Telemetry.ringKeys(noGpu, false).toString());
         check("no fan bar without a fan", false,
               Telemetry.barKeys(Telemetry.parseDiscovery("")).contains("fan"));
 
@@ -1227,64 +1227,88 @@ public final class TestMain {
         // The large figure carries no unit and the small line underneath does,
         // which is stock's own convention and what keeps four different kinds
         // of reading looking like one instrument.
-        check("the CPU ring shows the clock, bare", "2.71", Telemetry.ringBig("cpu", r));
+        check("the CPU ring shows the clock, bare", "2.71", Telemetry.ringBig("cpu", r, null));
         check("a sub-GHz clock stays in MHz", "864", Telemetry.cpuFreqValue(864000));
         check("and says so", "MHz", Telemetry.cpuFreqUnit(864000));
         check("a GHz clock says GHz", "GHz", Telemetry.cpuFreqUnit(2707200));
-        check("the GPU ring is a bare percentage", "4", Telemetry.ringBig("gpu", r));
-        check("the GPU ring's unit", "%", Telemetry.ringSub("gpu", r));
+        check("the GPU ring is a bare percentage", "4", Telemetry.ringBig("gpu", r, null));
+        check("the GPU ring's unit", "%", Telemetry.ringSub("gpu", r, null));
         // One decimal, not the row's two: the figure sits inside a circle about
         // 40dp across, where a fourth digit is smaller than it is useful. The
         // row elsewhere still prints +0.98 W from the same reading.
         check("the power ring rounds to one decimal", "+1.0",
-              Telemetry.ringBig("battery", r));
+              Telemetry.ringBig("battery", r, null));
         check("a bigger draw keeps its tenth", "\u22126.0",
               Telemetry.wattsValue(-1415000L, 4273296L, "Not charging"));
-        check("the power ring's unit", "W", Telemetry.ringSub("battery", r));
-        check("the RAM ring shows what is used", "2.6", Telemetry.ringBig("ram", r));
-        check("and the total underneath", "/ 7.0 GB", Telemetry.ringSub("ram", r));
+        check("the power ring's unit", "W", Telemetry.ringSub("battery", r, null));
+        check("the RAM ring shows what is used", "2.6", Telemetry.ringBig("ram", r, null));
+        check("and the total underneath", "/ 7.0 GB", Telemetry.ringSub("ram", r, null));
 
         // Which figure is the clock and which is the load never swaps, so the
         // gauge cannot change meaning between ticks - including the first,
         // where the load is not computable yet.
         check("the first tick's CPU ring is just the unit", "GHz",
-              Telemetry.ringSub("cpu", r));
+              Telemetry.ringSub("cpu", r, null));
         check("the CPU ring gains the load once it exists", "GHz  33%",
               Telemetry.ringSub("cpu", Telemetry.parseTick(
                   tickOut.replace("/proc/stat:cpu  1100 0 550 8300 110 0 0 0 0 0",
                                   "/proc/stat:cpu  1200 0 600 8600 120 0 0 0 0 0"),
-                  l, Telemetry.parseTick(tickOut, l, null))));
+                  l, Telemetry.parseTick(tickOut, l, null)), null));
 
         Telemetry.Readings none = Telemetry.parseTick("", l);
         check("an unreadable ring prints an em dash", Telemetry.NONE,
-              Telemetry.ringBig("gpu", none));
-        check("so does the power ring", Telemetry.NONE, Telemetry.ringBig("battery", none));
-        check("and the RAM ring", Telemetry.NONE, Telemetry.ringBig("ram", none));
+              Telemetry.ringBig("gpu", none, null));
+        check("so does the power ring", Telemetry.NONE, Telemetry.ringBig("battery", none, null));
+        check("and the RAM ring", Telemetry.NONE, Telemetry.ringBig("ram", none, null));
 
         // --- how much of a ring is filled --------------------------------------
         check("the GPU ring fills to its utilisation", 0.04f,
-              Telemetry.ringFraction("gpu", r, l));
+              Telemetry.ringFraction("gpu", r, l, null));
         check("the RAM ring fills to what is used", 0.37f,
-              Telemetry.ringFraction("ram", r, l));
+              Telemetry.ringFraction("ram", r, l, null));
         // Power is the one reading with no ceiling, so its arc is scaled to a
         // round full-scale and saturates there. The printed figure stays exact.
         check("the power ring scales to its full scale", 25.0,
               Telemetry.PWR_FULL_SCALE_W);
         check("0.98 W of 25 fills a twenty-fifth", 0.039f,
-              Math.round(Telemetry.ringFraction("battery", r, l) * 1000) / 1000f);
+              Math.round(Telemetry.ringFraction("battery", r, l, null) * 1000) / 1000f);
         Telemetry.Readings huge = Telemetry.parseTick(
               tickOut.replace("/sys/class/power_supply/battery/current_now:229619",
                               "/sys/class/power_supply/battery/current_now:9000000"), l);
         check("a draw past full scale saturates rather than overflowing", 1.0f,
-              Telemetry.ringFraction("battery", huge, l));
-        check("no reading, no arc", -1.0f, Telemetry.ringFraction("battery", none, l));
-        check("an unreadable GPU has no arc", -1.0f, Telemetry.ringFraction("gpu", none, l));
+              Telemetry.ringFraction("battery", huge, l, null));
+        check("no reading, no arc", -1.0f, Telemetry.ringFraction("battery", none, l, null));
+        check("an unreadable GPU has no arc", -1.0f, Telemetry.ringFraction("gpu", none, l, null));
+
+        // --- the FPS ring -------------------------------------------------------
+        // Absent far more often than not - it needs a focused app on the top
+        // screen that is actually drawing - so it earns its slot by being
+        // there rather than holding one that reads blank.
+        check("no FPS ring until something is drawing", false,
+              Telemetry.ringKeys(l, false).contains("fps"));
+        check("FPS leads when it works", "fps", Telemetry.ringKeys(l, true).get(0));
+        Fps.Sample s120 = Fps.parseLatency(
+            "8333333\n"
+          + "1000000000\t1000000000\t1000000000\n"
+          + "1008333333\t1008333333\t1008333333\n"
+          + "1016666666\t1016666666\t1016666666\n");
+        check("the FPS ring is a whole number", "120", Telemetry.ringBig("fps", r, s120));
+        check("with the panel's own rate beneath", "/ 120",
+              Telemetry.ringSub("fps", r, s120));
+        check("a game keeping up fills the ring", 1.0f,
+              Telemetry.ringFraction("fps", r, l, s120));
+        check("no sample, no figure", Telemetry.NONE,
+              Telemetry.ringBig("fps", r, Fps.NO_SAMPLE));
+        check("no sample, no arc", -1.0f,
+              Telemetry.ringFraction("fps", r, l, Fps.NO_SAMPLE));
+        check("a null sample is handled too", Telemetry.NONE,
+              Telemetry.ringBig("fps", r, null));
 
         // A ring and the bar it replaced must never disagree, so everything
         // except power goes through the same gaugePercent.
         check("the ring agrees with the percentage it came from",
               Telemetry.gaugePercent("ram", r, null, l) / 100f,
-              Telemetry.ringFraction("ram", r, l));
+              Telemetry.ringFraction("ram", r, l, null));
 
         // --- CPU utilisation ----------------------------------------------------
         // Only the "cpu" summary line. The per-core lines sit in the same file
@@ -1407,24 +1431,62 @@ public final class TestMain {
         check("no dump, no focus", null, Fps.parseFocusedPackageOnDisplay(null, 0));
 
         // --- picking the layer ------------------------------------------------
+        // The device's real `dumpsys SurfaceFlinger --list` output for a
+        // focused Dusklight, 2026-11-04. Eight layers name the package and
+        // exactly one of them has timestamps.
         String list =
-            "com.foo.game/com.foo.game.MainActivity#0\n"
-          + "SurfaceView[com.foo.game/com.foo.game.MainActivity](BLAST)#0\n"
-          + "Splash Screen com.foo.game#0\n"
-          + "NavigationBar0#0\n";
-        // The SurfaceView wins: that is what a game renders into, and the
-        // activity's own layer above it would report the UI's rate instead.
-        check("the SurfaceView layer is preferred",
-              "SurfaceView[com.foo.game/com.foo.game.MainActivity](BLAST)#0",
-              Fps.pickLayer(list, "com.foo.game"));
-        check("the activity layer is the fallback",
-              "com.foo.game/com.foo.game.MainActivity#0",
-              Fps.pickLayer("com.foo.game/com.foo.game.MainActivity#0\n", "com.foo.game"));
-        check("a splash screen is never the answer", null,
-              Fps.pickLayer("Splash Screen com.foo.game#0\n", "com.foo.game"));
-        check("an unlisted package has no layer", null,
-              Fps.pickLayer(list, "com.other.app"));
-        check("no list, no layer", null, Fps.pickLayer(null, "com.foo.game"));
+            "RequestedLayerState{d618b85 ActivityRecordInputSink dev.twilitrealm.dusk/.DuskActivity#860 parentId=854 z=-2147483648}\n"
+          + "RequestedLayerState{Bounds for - dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity#865 parentId=862}\n"
+          + "RequestedLayerState{f276fb1 SurfaceView[dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity]#866 parentId=865 relativeParentId=862 z=-2}\n"
+          + "RequestedLayerState{ActivityRecord{149495258 u0 dev.twilitrealm.dusk/.DuskActivity t80}#854 parentId=853}\n"
+          + "RequestedLayerState{VRI-dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity#862 parentId=861}\n"
+          + "RequestedLayerState{f6044b9 dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity#861 parentId=854}\n"
+          + "RequestedLayerState{f276fb1 SurfaceView[dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity](BLAST)#867 parentId=866}\n"
+          + "RequestedLayerState{Background for f276fb1 SurfaceView[dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity]#868 parentId=866 relativeParentId=862 z=-2147483648}\n";
+        final String PKG = "dev.twilitrealm.dusk";
+
+        // The wrapper is stripped at the LAST brace, not the first: this
+        // layer's own name contains braces, and matching the first would cut
+        // it off mid-name.
+        check("a name containing braces survives",
+              "ActivityRecord{149495258 u0 dev.twilitrealm.dusk/.DuskActivity t80}#854",
+              Fps.layerNameOf("RequestedLayerState{ActivityRecord{149495258 u0 "
+                  + "dev.twilitrealm.dusk/.DuskActivity t80}#854 parentId=853}"));
+        // Trailing key=value attributes are dropped; the spaces and brackets
+        // inside the name are not, because --latency wants them.
+        check("attributes are dropped, the name is not",
+              "f276fb1 SurfaceView[dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity]#866",
+              Fps.layerNameOf("RequestedLayerState{f276fb1 SurfaceView[dev.twilitrealm.dusk/"
+                  + "dev.twilitrealm.dusk.DuskActivity]#866 parentId=865 relativeParentId=862 z=-2}"));
+        check("a line with no wrapper yields nothing", null, Fps.layerNameOf("nonsense"));
+        check("null yields nothing", null, Fps.layerNameOf(null));
+
+        List<String> cands = Fps.pickLayers(list, PKG);
+        // The BLAST child first: it is the only one of the eight that
+        // actually returned frames on the device.
+        check("the BLAST SurfaceView is tried first",
+              "f276fb1 SurfaceView[dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity](BLAST)#867",
+              cands.get(0));
+        check("then the plain SurfaceView",
+              "f276fb1 SurfaceView[dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity]#866",
+              cands.get(1));
+        check("then the view-root layer",
+              "VRI-dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity#862", cands.get(2));
+        check("then whatever else named the package",
+              "f6044b9 dev.twilitrealm.dusk/dev.twilitrealm.dusk.DuskActivity#861", cands.get(3));
+        // The four that can never carry frames are dropped rather than ranked
+        // last, so the caller never spends a 35 ms call on them.
+        check("four candidates, not eight", 4, cands.size());
+        for (String bad : new String[] { "ActivityRecordInputSink", "Bounds for",
+                                         "ActivityRecord{", "Background for" }) {
+            boolean present = false;
+            for (String c : cands) if (c.contains(bad)) present = true;
+            check("no candidate is a " + bad, false, present);
+        }
+        check("an unlisted package has no candidates", 0,
+              Fps.pickLayers(list, "com.other.app").size());
+        check("no list, no candidates", 0, Fps.pickLayers(null, PKG).size());
+        check("no package, no candidates", 0, Fps.pickLayers(list, null).size());
 
         // --- quoting a layer name ---------------------------------------------
         // Layer names carry brackets, hashes and spaces, so this is the one
