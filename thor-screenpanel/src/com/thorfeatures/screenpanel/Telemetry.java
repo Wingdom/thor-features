@@ -836,6 +836,49 @@ public final class Telemetry {
         }
     }
 
+    /**
+     * Ring diameters, in dp, by how much the reading matters.
+     *
+     * Three sizes rather than one because five equal circles give five equal
+     * claims on the eye, and these are not equal. The row is read while
+     * something else is happening on the other screen, so the question each
+     * gauge answers decides its size:
+     *
+     * <ul>
+     * <li><b>Large - FPS.</b> The only reading here that is about the game
+     *     rather than the machine, and the one the tab gets opened for.</li>
+     * <li><b>Medium - CPU and GPU.</b> What is being asked of the chip, and
+     *     the pair you compare against each other when a game drops frames.
+     *     Keeping them the same size is what makes that comparison fair.</li>
+     * <li><b>Small - power and memory.</b> Real readings, but ones you check
+     *     rather than watch; neither changes what you would do in the next
+     *     few seconds.</li>
+     * </ul>
+     *
+     * A cell's width is weighted by the same number, so each stays close to
+     * square and the gaps between rings stay even.
+     */
+    public static final int RING_LARGE  = 132;
+    public static final int RING_MEDIUM = 112;
+    public static final int RING_SMALL  = 88;
+
+    /** How big a ring should be drawn, in dp. */
+    public static int ringSizeDp(String key) {
+        if ("fps".equals(key)) return RING_LARGE;
+        if ("cpu".equals(key) || "gpu".equals(key)) return RING_MEDIUM;
+        return RING_SMALL;
+    }
+
+    /**
+     * The share of the row's width a ring takes.
+     *
+     * Derived from its diameter rather than chosen separately, so the two can
+     * never drift into a cell that is much wider than the circle it holds.
+     */
+    public static float ringWeight(String key) {
+        return ringSizeDp(key) / 100f;
+    }
+
     /** The short name drawn at the top of a ring. */
     public static String ringLabel(String key) {
         if (key == null) return "";

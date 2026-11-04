@@ -1217,6 +1217,24 @@ public final class TestMain {
         check("no fan bar without a fan", false,
               Telemetry.barKeys(Telemetry.parseDiscovery("")).contains("fan"));
 
+        // Five equal circles would give five equal claims on the eye, and
+        // these are not equal. FPS is the only reading about the game rather
+        // than the machine; CPU and GPU match each other so the comparison
+        // between them is fair; power and memory are checked, not watched.
+        check("FPS is the largest", Telemetry.RING_LARGE, Telemetry.ringSizeDp("fps"));
+        check("CPU is medium",  Telemetry.RING_MEDIUM, Telemetry.ringSizeDp("cpu"));
+        check("GPU matches CPU exactly", Telemetry.ringSizeDp("cpu"),
+              Telemetry.ringSizeDp("gpu"));
+        check("power is small",  Telemetry.RING_SMALL, Telemetry.ringSizeDp("battery"));
+        check("memory is small", Telemetry.RING_SMALL, Telemetry.ringSizeDp("ram"));
+        check("the sizes are actually a hierarchy", true,
+              Telemetry.RING_LARGE > Telemetry.RING_MEDIUM
+                  && Telemetry.RING_MEDIUM > Telemetry.RING_SMALL);
+        // Width share follows the diameter, so a cell can never end up much
+        // wider than the circle it holds.
+        check("weight follows the diameter", 1.32f, Telemetry.ringWeight("fps"));
+        check("and for a small ring", 0.88f, Telemetry.ringWeight("ram"));
+
         check("rings use short names", "PWR", Telemetry.ringLabel("battery"));
         check("and the CPU keeps its own", "CPU", Telemetry.ringLabel("cpu"));
         check("a temperature bar is labelled", "CPU temp", Telemetry.gaugeLabel("temp:CPU"));

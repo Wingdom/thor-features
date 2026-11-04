@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 413 tests
+feature on the host with no device and no root — that is how all 421 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -242,6 +242,23 @@ for the readings that move while a game runs — CPU, GPU, power, memory — ove
 bars for the ones you check rather than watch, the three temperatures and fan
 duty. Two shapes rather than one is what makes the hierarchy readable at a
 glance; a circle is a headline number and a bar is a supporting one.
+
+### The rings are three sizes, not one
+
+Five equal circles give five equal claims on the eye, and these are not
+equal. The size says what the reading is for:
+
+| | | |
+|---|---|---|
+| **FPS** | 132dp | the only reading about the game rather than the machine, and what the tab gets opened for |
+| **CPU**, **GPU** | 112dp | what is being asked of the chip — matched to each other, because that comparison is the point when a game drops frames |
+| **PWR**, **RAM** | 88dp | real readings, but checked rather than watched; neither changes what you would do in the next few seconds |
+
+A cell's width is weighted by the same number its diameter uses, so the two
+cannot drift into a cell much wider than the circle it holds, and the row is
+centred vertically so the small rings sit on its axis rather than hanging from
+its top. The gauge draws on `min(width, height)`, so the height is what sets
+the diameter.
 
 `RingGauge` is a plain custom `View`. It draws the arc and all three pieces of
 text in one pass against one set of bounds, which is the only way the text
