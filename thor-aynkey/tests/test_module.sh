@@ -97,6 +97,57 @@ check "the layout maps exactly the device's two keys" "115 194" \
 check "customize.sh guards VOLUME_UP" "yes" \
       "$(grep -q 'key 115' magisk/customize.sh && echo yes || echo no)"
 
+# --- the persistent log ------------------------------------------------------
+# The log exists because logcat cannot be read after the fact on this device:
+# the main buffer's logspan was measured at 5:52 on 2026-11-03, so the daemon's
+# own lines are gone minutes after it starts. These assertions are about WHERE
+# it goes and that it stays bounded.
+
+# It must live under /data/adb, beside the other modules' boot.log, and never
+# anywhere in this repository - the tree had its raw logs deleted on 2026-10-22
+# and must not grow new ones.
+check "the log is under /data/adb" "yes" \
+      "$(grep -qE '^LOGFILE=.*\$\{AYNKEYD_LOG:-\$STATE_DIR/' aynkeyd && echo yes || echo no)"
+check "the default state dir is /data/adb/thor-aynkey" "yes" \
+      "$(grep -qE '^STATE_DIR=\$\{AYNKEYD_STATE_DIR:-/data/adb/thor-aynkey\}' aynkeyd && echo yes || echo no)"
+check "no log path points into the repository" "" \
+      "$(grep -oE '(LOG|LOGFILE)=[^ ]*(\.\./|thor-features)[^ ]*' aynkeyd | tr '\n' ' ')"
+
+# Bounded, in one place, the same way the threshold is. An unrotated file is the
+# failure mode here: a permanently absent input device logs a reconnect every
+# 2s forever.
+check "the cap appears once as an assignment" "1" \
+      "$(grep -cE '^LOG_MAX=' aynkeyd)"
+check "something actually rotates the log" "yes" \
+      "$(sed 's/#.*//' aynkeyd | grep -qE 'mv +-f +"\$LOGFILE"' && echo yes || echo no)"
+
+# --- the traps ---------------------------------------------------------------
+# The whole point of the change: the next death must say what killed it. All
+# four catchable signals, plus EXIT for the case no signal explains.
+for sig in TERM INT HUP QUIT; do
+    check "SIG$sig is trapped" "yes" \
+          "$(sed 's/#.*//' aynkeyd | grep -qE "trap .* $sig\$" && echo yes || echo no)"
+done
+check "EXIT is trapped" "yes" \
+      "$(sed 's/#.*//' aynkeyd | grep -qE 'trap .* EXIT$' && echo yes || echo no)"
+
+# Traps must be installed only in the foreground daemon. A plain `aynkeyd
+# status` that appended an exit line would corrupt the one record of a death.
+check "install_traps is called exactly once" "1" \
+      "$(sed 's/#.*//' aynkeyd | grep -cE '^ *install_traps$')"
+check "and it is inside the --foreground branch" "yes" \
+      "$(awk '/if \[ "\$\{1:-\}" = "--foreground" \]/,/^    fi$/' aynkeyd \
+         | grep -q install_traps && echo yes || echo no)"
+
+# --- uninstall leaves the log ------------------------------------------------
+# Deliberate, and the same reasoning as action.sh: if the module is being
+# reinstalled to fix a problem, the log is the record of that problem. Run
+# state goes, the diagnostic record stays.
+check "uninstall removes the run state" "yes" \
+      "$(grep -qE 'rm -rf /data/adb/thor-aynkey/run' magisk/uninstall.sh && echo yes || echo no)"
+check "uninstall does not delete the log" "" \
+      "$(grep -oE 'rm[^;]*aynkeyd\.log[^;]*' magisk/uninstall.sh | tr '\n' ' ')"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
