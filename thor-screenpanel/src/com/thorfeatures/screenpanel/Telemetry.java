@@ -777,14 +777,19 @@ public final class Telemetry {
      * a genuine zero never look alike. The GPU is the case that matters: its
      * sysfs directory is readable only through the panel's own transport.
      */
-    public static List<String> ringKeys(Layout l, boolean fpsAvailable) {
+    public static List<String> ringKeys(Layout l, boolean fpsSupported) {
         List<String> keys = new ArrayList<>();
-        // FPS leads when it works: it is the number a person opens this tab
-        // to see, and the only one that is about the game rather than the
-        // machine. It is absent far more often than not - it needs a focused
-        // app on the top screen that is actually drawing - so it earns its
-        // place by being there, not by holding a slot that reads blank.
-        if (fpsAvailable)          keys.add("fps");
+        // FPS leads: it is the number a person opens this tab to see, and the
+        // only one about the game rather than the machine.
+        //
+        // The gate is whether this build can measure frame rates at all, NOT
+        // whether something happens to be drawing right now. An earlier
+        // version gated on the reading and the ring disappeared whenever the
+        // top screen was idle, which is indistinguishable from the feature
+        // being broken - the same "explains itself or looks dead" failure
+        // this panel has had twice before. The ring now stays and says why it
+        // has no number; see ringSub.
+        if (fpsSupported)          keys.add("fps");
         if (!l.policies.isEmpty()) keys.add("cpu");
         if (l.hasGpu())            keys.add("gpu");
         keys.add("battery");
@@ -998,10 +1003,14 @@ public final class Telemetry {
     public static String ringSub(String key, Readings r, Fps.Sample fps) {
         if (key == null) return "";
         if (key.equals("fps")) {
-            // The panel's own rate, so the figure above reads as a fraction of
-            // what the screen can actually show: 119 of 120 is a game keeping
-            // up, and 119 alone does not say that.
-            if (fps == null || fps.refreshHz <= 0) return "fps";
+            // With no reading, say which kind of nothing this is. A blank
+            // gauge and a broken one look the same, and the whole reason this
+            // ring stays on screen when idle is so that it can tell you.
+            if (fps == null || fps.fps == ABSENT) return "no frames";
+            // Otherwise the panel's own rate, so the figure above reads as a
+            // fraction of what the screen can actually show: 119 of 120 is a
+            // game keeping up, and 119 alone does not say that.
+            if (fps.refreshHz <= 0) return "fps";
             return "/ " + Math.round(fps.refreshHz);
         }
         if (r == null) return "";

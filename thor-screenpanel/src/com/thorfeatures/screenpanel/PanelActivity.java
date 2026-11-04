@@ -451,9 +451,18 @@ public final class PanelActivity extends Activity {
     private final Map<String, RingGauge> ringViews = new LinkedHashMap<>();
     private final Map<String, View> barViews = new LinkedHashMap<>();
 
-    /** The layer FPS is being read from, and whether that ever worked. */
+    /**
+     * The layer FPS is read from, whether this build can measure at all, and
+     * when resolution was last attempted.
+     *
+     * {@code fpsSupported} gates the ring and {@code fpsLayer} gates the
+     * reading, and they are deliberately different questions. The ring is on
+     * screen whenever the interface exists; it reads "no frames" when nothing
+     * is drawing, rather than vanishing.
+     */
     private String fpsLayer;
-    private boolean fpsAvailable;
+    private boolean fpsSupported;
+    private long lastResolveMs;
 
     /**
      * The previous tick's readings, kept only so CPU utilisation has a delta.
@@ -574,7 +583,7 @@ public final class PanelActivity extends Activity {
         final int gap = Math.round(6 * density);   // the panel's own card gap
         LayoutInflater inf = LayoutInflater.from(this);
 
-        List<List<String>> groups = Telemetry.ringGroups(l, fpsAvailable);
+        List<List<String>> groups = Telemetry.ringGroups(l, fpsSupported);
         // Every card gets the height of the largest ring on show, plus the
         // card's own padding, rather than wrapping its own contents. Left to
         // wrap, the card holding the small rings finishes higher than the one
@@ -673,21 +682,22 @@ public final class PanelActivity extends Activity {
     // --- phase 2: FPS --------------------------------------------------------
 
     /**
-     * Find out whether a frame counter is possible at all, once.
+     * Find out whether this build can measure frame rates at all, once.
      *
-     * Phase 2 was an investigation, and this is the probe that settled it: if
-     * nothing answers, {@code fpsAvailable} stays false, no FPS ring is built,
-     * and the rest of the tab is unaffected. A ring that always read an em
-     * dash would be the "looked alive and did nothing" failure this panel has
-     * already been bitten by.
+     * Deliberately a capability check and not a reading. {@code --latency}
+     * with no layer prints the refresh period and stops, so it answers the
+     * question without needing anything to be on screen - which is the whole
+     * point, because "this build cannot do it" and "nothing is drawing right
+     * now" are different facts and the first version conflated them.
      *
-     * Runs on the io thread as part of discovery. It is three `dumpsys` calls
-     * at worst and the layer one costs 35 ms, which is why this happens once
-     * rather than per tick.
+     * The layer is resolved here too so the first tick has one, but failing
+     * to find it is not fatal: {@link #sampleFps} keeps trying.
      */
     private void probeFps(Telemetry.Layout l) {
+        fpsSupported = Fps.isSupported(root.run(Fps.supportCommand()).out);
+        if (!fpsSupported) return;
         fpsLayer = resolveFpsLayer();
-        fpsAvailable = fpsLayer != null;
+        lastResolveMs = System.currentTimeMillis();
     }
 
     /**
@@ -722,20 +732,35 @@ public final class PanelActivity extends Activity {
     }
 
     /**
-     * This tick's frame rate, re-resolving the layer when it stops answering.
+     * How long to wait before looking for the layer again after a miss.
      *
-     * The layer name is cached rather than looked up every tick, because the
-     * lookup is two `dumpsys` calls and the answer only changes when the user
-     * switches app. Going absent is the signal that it has changed, which
-     * makes the cache self-healing without a timer: one tick reads nothing,
-     * the next has re-resolved.
+     * Resolution is two {@code dumpsys} calls plus up to four 35 ms
+     * {@code --latency} calls, so retrying it every second while the top
+     * screen sits idle would cost far more than the tick it rides on. Five
+     * seconds is slow enough to be cheap and quick enough that a game started
+     * after the panel is already open starts reading within a few ticks.
+     */
+    private static final long FPS_RETRY_MS = 5000;
+
+    /**
+     * This tick's frame rate, looking for the layer again when it has none.
+     *
+     * The layer is cached rather than resolved per tick, because the lookup
+     * is expensive and the answer only changes when the user switches app.
+     * A sample going absent is the signal that it has changed, which makes
+     * the cache self-healing - but the retry is rate-limited, because the
+     * absent case is also what happens when nothing is drawing at all, and
+     * that can last for minutes.
      */
     private Fps.Sample sampleFps() {
-        if (!fpsAvailable) return Fps.NO_SAMPLE;
+        if (!fpsSupported) return Fps.NO_SAMPLE;
         if (fpsLayer != null) {
             Fps.Sample s = readFps(fpsLayer);
             if (s.fps != Fps.ABSENT) return s;
         }
+        long now = System.currentTimeMillis();
+        if (now - lastResolveMs < FPS_RETRY_MS) return Fps.NO_SAMPLE;
+        lastResolveMs = now;
         fpsLayer = resolveFpsLayer();
         return fpsLayer == null ? Fps.NO_SAMPLE : readFps(fpsLayer);
     }

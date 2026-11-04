@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 431 host tests + 17 action tests, then packages
+./build.sh      runs 439 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -243,6 +243,12 @@ were observed.
 is a skin sensor. The row reads `xo-therm`, a thermistor on the board — the
 closest thing available, and near enough to what the chassis feels to be
 useful, but it is not a skin measurement and is not labelled as one.
+
+**The FPS ring reads `no frames` when the top screen is idle**, rather than
+disappearing. It is there whenever the device can measure frame rates at all;
+whether anything is currently drawing is a separate question and it says which
+one it is. If you leave the panel open and then start a game, the ring picks
+it up within a few seconds.
 
 **The FPS ring measures the other screen.** A `Choreographer` would measure
 the panel — a static card on the 3.92" screen — and report a confident 60
