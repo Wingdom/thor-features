@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 421 tests
+feature on the host with no device and no root — that is how all 431 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -242,6 +242,41 @@ for the readings that move while a game runs — CPU, GPU, power, memory — ove
 bars for the ones you check rather than watch, the three temperatures and fan
 duty. Two shapes rather than one is what makes the hierarchy readable at a
 glance; a circle is a headline number and a bar is a supporting one.
+
+### The tab is several cards, and the gaps do the grouping
+
+The Telemetry tab is not one card. It is a row of three ring cards, then a
+card of bars, then Mode — all separated by the same 6dp gap the Controls tab
+uses between its own cards, so both tabs are built out of the same units.
+
+A gap reads as a change of subject, so there are three subjects:
+
+| card | subject |
+|---|---|
+| **FPS** | what the *game* is doing |
+| **CPU · GPU** | what the *chip* is doing |
+| **PWR · RAM** | what the *device* is spending |
+
+Putting CPU and GPU on one card is what says "compare these two to each
+other". Putting power and memory on another says "and these are something
+else". The temperatures and fan get a section of their own below, which is
+what separates the readings you watch from the readings you check — fan duty
+sits with them because it is the device's *answer* to them: 94 C next to 8/8
+says the cooling is already doing everything it can, which neither number
+says alone.
+
+An empty group drops out rather than leaving a card with nothing on it, so a
+build with no readable GPU gets a narrower middle card and a tab with nothing
+drawing on the top screen gets no first card at all.
+
+Two sizing rules keep the row from looking accidental. A card's width weight
+is the sum of its rings' weights, so cards stay proportional to their contents
+rather than to how many of them there happen to be. And **every card is given
+the height of the largest ring on show** rather than wrapping its own
+contents — left to wrap, the card holding the small rings finishes higher than
+the one beside it and the row reads as ragged rather than as a set. That was
+visible on the first build of this layout and is the reason `maxRingSizeDp`
+exists.
 
 ### The rings are three sizes, not one
 

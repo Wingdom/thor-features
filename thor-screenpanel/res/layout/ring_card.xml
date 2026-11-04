@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One card of ring gauges. Width and left margin are set at runtime, from
+     the weight of the rings it holds, so the cards stay proportional to their
+     contents rather than to how many of them there happen to be. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/panel_card"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:baselineAligned="false"
+    android:paddingTop="14dp"
+    android:paddingBottom="14dp" />

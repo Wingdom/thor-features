@@ -793,12 +793,71 @@ public final class Telemetry {
     }
 
     /**
+     * The rings grouped into the cards they are drawn on, in display order.
+     *
+     * Three groups, and the grouping is the same argument the sizes make,
+     * said a second way. A gap between cards reads as a change of subject,
+     * so the subjects are: what the <em>game</em> is doing, what the
+     * <em>chip</em> is doing, and what the <em>device</em> is spending.
+     * Putting CPU and GPU on one card is what says "compare these two to each
+     * other"; putting power and memory on another says "and these are
+     * something else".
+     *
+     * Empty groups drop out rather than leaving a card with nothing on it, so
+     * a build with no readable GPU gets a narrower middle card and a build
+     * with nothing drawing on the top screen gets no first card at all.
+     */
+    public static List<List<String>> ringGroups(Layout l, boolean fpsAvailable) {
+        List<List<String>> groups = new ArrayList<>();
+        List<String> all = ringKeys(l, fpsAvailable);
+        String[][] wanted = {
+            { "fps" },
+            { "cpu", "gpu" },
+            { "battery", "ram" },
+        };
+        for (String[] group : wanted) {
+            List<String> present = new ArrayList<>();
+            for (String key : group) if (all.contains(key)) present.add(key);
+            if (!present.isEmpty()) groups.add(present);
+        }
+        return groups;
+    }
+
+    /**
+     * The diameter of the largest ring on show, in dp.
+     *
+     * Every ring card is given this height rather than wrapping its own
+     * contents, so the cards in the row share one baseline and one bottom
+     * edge. Left to wrap, a card holding small rings finishes higher than the
+     * one beside it and the row reads as ragged rather than as a set.
+     */
+    public static int maxRingSizeDp(List<List<String>> groups) {
+        int max = RING_SMALL;
+        for (List<String> group : groups) {
+            for (String key : group) max = Math.max(max, ringSizeDp(key));
+        }
+        return max;
+    }
+
+    /** The share of the row's width a card of rings takes. */
+    public static float groupWeight(List<String> group) {
+        float w = 0f;
+        for (String key : group) w += ringWeight(key);
+        return w;
+    }
+
+    /**
      * The supporting readings, shown as bars under the rings.
      *
      * Temperatures and fan duty change slowly enough to be checked rather than
-     * watched, so they get the quieter shape. Keeping two shapes is also what
-     * makes the hierarchy readable at a glance: a circle is a headline, a bar
-     * is a detail.
+     * watched, so they get the quieter shape and a section of their own.
+     * Keeping two shapes is also what makes the hierarchy readable at a
+     * glance: a circle is a headline, a bar is a detail.
+     *
+     * Fan duty sits with the temperatures rather than alone. It is not a
+     * temperature, but it is the device's answer to them - reading 94 C next
+     * to 8/8 says the cooling is already doing everything it can, which
+     * neither number says by itself.
      *
      * {@code usb-therm} is here for a reason beyond completeness. Its 60 C
      * quiet trip in fanctl is still reasoned rather than measured - no log has

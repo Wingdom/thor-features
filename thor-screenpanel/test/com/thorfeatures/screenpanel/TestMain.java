@@ -1235,6 +1235,41 @@ public final class TestMain {
         check("weight follows the diameter", 1.32f, Telemetry.ringWeight("fps"));
         check("and for a small ring", 0.88f, Telemetry.ringWeight("ram"));
 
+        // --- how the rings are grouped into cards --------------------------------
+        // A gap between cards reads as a change of subject, and there are
+        // three: what the game is doing, what the chip is doing, what the
+        // device is spending.
+        check("three cards when everything is there",
+              "[[fps], [cpu, gpu], [battery, ram]]",
+              Telemetry.ringGroups(l, true).toString());
+        check("no FPS card when nothing is drawing",
+              "[[cpu, gpu], [battery, ram]]",
+              Telemetry.ringGroups(l, false).toString());
+        // An empty group drops out rather than leaving a card with nothing on
+        // it; the middle card just gets narrower.
+        check("an unreadable GPU narrows its card, it does not empty it",
+              "[[cpu], [battery, ram]]",
+              Telemetry.ringGroups(noGpu, false).toString());
+        check("root refused means no cards at all", "[[battery, ram]]",
+              Telemetry.ringGroups(Telemetry.parseDiscovery(""), false).toString());
+        // A card's width follows the rings it holds, not the number of cards.
+        check("the CPU/GPU card is two mediums wide", 2.24f,
+              Telemetry.groupWeight(Telemetry.ringGroups(l, true).get(1)));
+        check("the FPS card is one large wide", 1.32f,
+              Telemetry.groupWeight(Telemetry.ringGroups(l, true).get(0)));
+        check("the PWR/RAM card is two smalls wide", 1.76f,
+              Telemetry.groupWeight(Telemetry.ringGroups(l, true).get(2)));
+
+        // Every card is as tall as the largest ring on show, so the row shares
+        // one bottom edge instead of stepping down from left to right.
+        check("the row is as tall as its largest ring", Telemetry.RING_LARGE,
+              Telemetry.maxRingSizeDp(Telemetry.ringGroups(l, true)));
+        check("and shrinks when FPS is absent", Telemetry.RING_MEDIUM,
+              Telemetry.maxRingSizeDp(Telemetry.ringGroups(l, false)));
+        check("smalls only still have a height", Telemetry.RING_SMALL,
+              Telemetry.maxRingSizeDp(Telemetry.ringGroups(
+                  Telemetry.parseDiscovery(""), false)));
+
         check("rings use short names", "PWR", Telemetry.ringLabel("battery"));
         check("and the CPU keeps its own", "CPU", Telemetry.ringLabel("cpu"));
         check("a temperature bar is labelled", "CPU temp", Telemetry.gaugeLabel("temp:CPU"));
