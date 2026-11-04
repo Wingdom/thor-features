@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 394 host tests + 17 action tests, then packages
+./build.sh      runs 413 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -182,6 +182,7 @@ rather than watch.
 
 | ring | shows | source |
 |---|---|---|
+| **FPS** | the frame rate of the game on the **top** screen, over the panel's refresh | SurfaceFlinger frame timestamps; appears only when something up there is drawing |
 | **CPU** | clock, with load on the line beneath | `/proc/stat` and `scaling_cur_freq` per cluster — three on this chip, not eight cores, showing the fastest |
 | **GPU** | load | `gpu_busy_percentage`. Utilisation, **not** clock; see below |
 | **PWR** | watts, signed | `current_now` × `voltage_now`, direction from `status` |
@@ -235,8 +236,15 @@ is a skin sensor. The row reads `xo-therm`, a thermistor on the board — the
 closest thing available, and near enough to what the chassis feels to be
 useful, but it is not a skin measurement and is not labelled as one.
 
+**The FPS ring measures the other screen.** A `Choreographer` would measure
+the panel — a static card on the 3.92" screen — and report a confident 60
+while a game stuttered at 24 beside it. This reads SurfaceFlinger's own frame
+timestamps for the layer the focused app on the top screen is drawing into,
+which is the only process that sees those frames. The ring is absent, rather
+than blank, whenever nothing up there is drawing.
+
 ## Not yet
 
-A frame-rate counter, which needs the compositor rather than this process —
-see `docs/ayn-button-panel.md`. Stock's other tabs (Settings / Task /
-Application), the per-output volume sliders, and the 60/90/120 FPS control.
+Stock's other tabs (Settings / Task / Application), the per-output volume
+sliders, and the 60/90/120 FPS mode control — this reads the frame rate but
+does not set it.

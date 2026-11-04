@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 394 tests
+feature on the host with no device and no root — that is how all 413 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -401,32 +401,79 @@ a live reading on the panel during a real charge-plus-game session is the
 evidence that has been missing. Note that PD cannot negotiate while adb
 occupies the USB-C port, so a full-rate test needs `adb tcpip` over WiFi.
 
-## Why there is no frame-rate counter yet
+## The frame-rate counter
+
+It measures the game on the **other** screen, and that is the whole difficulty.
 
 `Choreographer` is the obvious answer and it is the wrong one. It measures the
 frame rate of the process that registers it, so in the panel it measures the
-panel — a static card on the 3.92" screen, which will report a steady 60 while
-a game stutters at 24 on the other screen. A gauge that is always plausible
-and never right is worse than no gauge.
+panel — a static card on the 3.92" screen, which would report a steady 60
+while a game stuttered at 24 beside it. A gauge that is always plausible and
+never right is worse than no gauge.
 
-A real counter has to read SurfaceFlinger, which is the only process that sees
-every application's frames. The parsing and layer-selection logic for that is
-written (`Fps.java`) and host-tested, but **nothing in it has run against a
-device**, and three things are unknown: whether `dumpsys SurfaceFlinger
---latency` still answers on Android 17, whether the panel's root context may
-call it, and whether it is cheap enough that measuring frames does not cost
-frames.
+So the counter reads SurfaceFlinger, the only process that sees every
+application's frames. Verified on the device 2026-11-04.
 
-One finding is already banked, and it is the trap to avoid: **the panel itself
-holds focus while it is open.** It is a focused window on the bottom screen
-taking taps, so a flat `dumpsys window | grep mCurrentFocus` finds the panel,
-and a counter built on that measures this card. Focus has to be read per
-display, from inside a display's section of `dumpsys window displays` — the
-same structural trap `screenmove status` documents from the other end, where
-the focused display id appears nowhere but the full dump.
+### `dumpsys SurfaceFlinger --latency` still works on Android 17
 
-If the probe says no, the honest outcome is to record it as unreachable rather
-than ship a row that always reads an em dash.
+It returns what it always did: a refresh period in nanoseconds, then up to 128
+rows of three tab-separated timestamps. Against a running game it gave 65
+frames about 8.43 ms apart — roughly 119 fps on a 120 Hz panel.
+
+The rate comes from the **middle** column, actual-present: when the compositor
+put the frame on the glass. "Desired" is the app's intent and "ready" is when
+its buffer was finished, and a game that renders early and waits for vsync has
+a "ready" rate far above what anyone sees. The divisor is the number of
+*intervals*, not of frames — n timestamps bound n−1 periods, and using n
+under-reports worst on a short window, which is exactly the case of a game
+that just launched.
+
+One call costs **35 ms**, which is why the layer name is cached rather than
+re-resolved per tick.
+
+### Two traps, both of which would have produced a confident wrong number
+
+**The panel itself holds focus while it is open.** It is a focused window on
+the bottom screen taking taps, so `dumpsys window | grep mCurrentFocus` finds
+*the panel*, and a counter built on that measures this card. Focus has to be
+read per display, from inside a display's section of `dumpsys window
+displays`. Note the sections are not in display order — on this device display
+1 is printed before display 0 — so the parser tracks the section header rather
+than assuming.
+
+**Layer names are not what they used to be.** Android 17 wraps every layer:
+
+```
+RequestedLayerState{f276fb1 SurfaceView[pkg/act](BLAST)#867 parentId=866}
+RequestedLayerState{ActivityRecord{1234 u0 pkg/.Act t80}#854 parentId=853}
+```
+
+The second line matters: the name itself contains braces, so the wrapper has
+to be stripped at the **last** closing brace, not the first. The trailing
+`key=value` attributes are then dropped, and what is left — spaces, brackets
+and all — is the name `--latency` wants, single-quoted.
+
+### Only one layer of eight carries frames
+
+A focused app owns eight or so layers and seven return the refresh period and
+nothing else. For a SurfaceView game it was the `(BLAST)` child; its parent
+SurfaceView and the `VRI-` layer were both empty.
+
+Rather than encode that as a rule, `pickLayers` returns candidates in
+preference order — BLAST SurfaceView, then any SurfaceView, then the view-root
+layer, then anything else naming the package — and the caller takes the first
+that actually yields frames. That is self-correcting if a release reshuffles
+them, and the extra calls are paid once at resolve rather than every tick.
+Four kinds of layer that can never carry frames (`ActivityRecordInputSink`,
+`Background for`, `Bounds for`, `ActivityRecord{`) are dropped outright so no
+35 ms call is spent on them.
+
+### When nothing is drawing, the ring is absent
+
+Not blank, not an em dash — absent, and the remaining four rings space out to
+fill the row. The probe runs once when the tab is first opened; if no layer
+yields frames, no FPS ring is built. A ring that always read an em dash would
+be the "looked alive and did nothing" failure this panel has already had.
 
 ## What the button does
 

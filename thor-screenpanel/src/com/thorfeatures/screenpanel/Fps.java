@@ -20,31 +20,50 @@ import java.util.Locale;
  * A real counter has to read the compositor, because SurfaceFlinger is the
  * only process that sees every application's frames.
  *
- * <h3>Status: UNVERIFIED</h3>
+ * <h3>Status: verified on the device 2026-11-04</h3>
  *
- * Nothing in this file has run against a device. It is the parsing and
- * layer-selection logic for the probe described in
- * {@code NOTES.local.md}, written so that the probe is one command away and
- * its output has somewhere to land. Three specific things are unknown:
+ * All three of the unknowns this file was written around have been answered,
+ * and two of them differently than expected.
  *
  * <ol>
- * <li><b>Whether {@code --latency} still answers.</b> It is a long-standing
- *     SurfaceFlinger debug interface, but it predates the current frame
- *     timeline and has been reported empty or zero-filled on newer releases.
- *     Android 17 on this device is untested.</li>
- * <li><b>Whether the panel's root context may call it.</b> The GPU nodes are
- *     {@code Permission denied} under SELinux despite uid 0, in the context a
- *     command string runs in. {@code dumpsys} is a different route - a binder
- *     call to a service rather than a sysfs read - so it may well be allowed
- *     where kgsl is not, but that is a hypothesis.</li>
- * <li><b>Whether it is cheap enough.</b> A counter that costs frames to
- *     measure frames is self-defeating. {@code screenmove status} spends about
- *     120 ms in three {@code dumpsys} services, so one {@code dumpsys} per
- *     tick is plausibly in that order - acceptable at 1 Hz, not at 10.</li>
+ * <li><b>{@code --latency} still answers on Android 17.</b> It returns the
+ *     same shape it always did - a refresh period in nanoseconds, then rows of
+ *     three tab-separated timestamps. Against Dusklight it gave 65 frames
+ *     about 8.43 ms apart, which is ~119 fps on a 120 Hz panel.</li>
+ * <li><b>The panel's root context may call it.</b> It is a binder call to a
+ *     service rather than a sysfs read, and it is allowed where
+ *     {@code /sys/class/kgsl} was not.</li>
+ * <li><b>It costs 35 ms.</b> Measured over five calls. On top of the 27 ms
+ *     telemetry tick that is about 6% duty at 1 Hz, which is affordable - and
+ *     it is why the layer name is cached rather than re-resolved per tick.</li>
  * </ol>
  *
- * If the probe says no, the honest outcome is to ship phase 1 without this
- * and record why, rather than leave a gauge reading {@code --}.
+ * <h3>What was wrong: the layer names</h3>
+ *
+ * The format this file originally parsed - {@code SurfaceView[pkg/act](BLAST)#0}
+ * on its own line - is not what Android 17 prints. Every layer now arrives
+ * wrapped:
+ *
+ * <pre>
+ *   RequestedLayerState{f276fb1 SurfaceView[pkg/act](BLAST)#867 parentId=866}
+ *   RequestedLayerState{ActivityRecord{1234 u0 pkg/.Act t80}#854 parentId=853}
+ * </pre>
+ *
+ * Note the second line: the name itself contains braces, so the wrapper has to
+ * be stripped by finding the <em>last</em> closing brace, not the first. The
+ * trailing {@code key=value} attributes are then removed, and what is left -
+ * spaces, brackets and all - is the name {@code --latency} wants.
+ *
+ * <h3>Only one layer actually carries frames</h3>
+ *
+ * A focused app owns eight or so layers and seven of them return the refresh
+ * period and nothing else. For Dusklight only the {@code (BLAST)} child of the
+ * SurfaceView had timestamps; its parent SurfaceView and the {@code VRI-}
+ * layer were both empty. Rather than encode that as a rule,
+ * {@link #pickLayers} returns candidates in preference order and the caller
+ * takes the first that actually yields frames - which is self-correcting if a
+ * future release reshuffles them, and costs the extra calls only when the
+ * layer is resolved rather than on every tick.
  *
  * <h3>Prior art</h3>
  *
@@ -171,36 +190,76 @@ public final class Fps {
         return null;
     }
 
+    /** Layers that mention a package but can never carry its frames. */
+    private static final String[] NEVER = {
+        "ActivityRecordInputSink", "Background for", "Bounds for",
+        "ActivityRecord{", "Dim Layer", "ScreenDecor", "InputMethod", "Splash",
+    };
+
     /**
-     * Pick the layer that carries a package's rendered frames.
+     * The layer name out of one {@code --list} line, or null.
      *
-     * A focused app owns several layers and only one of them is the one being
-     * drawn into at the game's rate. A {@code SurfaceView} layer is preferred
-     * because that is what a game renders into - its own surface, composited
-     * beneath the activity's view hierarchy - and the activity's own layer
-     * would then be a mostly-static overlay reporting the UI's rate instead
-     * of the game's.
-     *
-     * Blast layers ({@code SurfaceView[pkg/act](BLAST)#0}) are the current
-     * naming and are matched by substring rather than by exact shape, so a
-     * rename does not silently fall through to the wrong layer.
-     *
-     * @return the layer name, or null when the package has no layer listed.
+     * The wrapper is stripped by finding the last closing brace rather than
+     * the first, because a layer name may itself contain braces - an
+     * {@code ActivityRecord{...}} layer does - and matching the first would
+     * truncate it mid-name. The trailing {@code key=value} attributes
+     * ({@code parentId}, {@code z}, {@code relativeParentId}) are then
+     * dropped; everything before them is the name, spaces included.
      */
-    public static String pickLayer(String listOut, String pkg) {
-        if (listOut == null || pkg == null || pkg.isEmpty()) return null;
-        String best = null;
+    static String layerNameOf(String line) {
+        if (line == null) return null;
+        int open = line.indexOf('{');
+        int close = line.lastIndexOf('}');
+        if (open < 0 || close <= open) return null;
+        String[] parts = line.substring(open + 1, close).trim().split(" ");
+        int end = parts.length;
+        while (end > 0 && parts[end - 1].matches("[A-Za-z][A-Za-z0-9_]*=[^ ]+")) end--;
+        if (end == 0) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < end; i++) {
+            if (i > 0) sb.append(' ');
+            sb.append(parts[i]);
+        }
+        String name = sb.toString().trim();
+        return name.isEmpty() ? null : name;
+    }
+
+    /**
+     * Candidate layers for a package's frames, best first.
+     *
+     * A ranking rather than a single answer, because only one of a focused
+     * app's layers actually has timestamps and which one is not something to
+     * assert from one device. The caller walks the list and keeps the first
+     * that yields frames, so a release that reshuffles them costs a couple of
+     * extra calls at resolve time instead of a silently dead counter.
+     *
+     * The order: a {@code (BLAST)} SurfaceView child first, since that is what
+     * carried Dusklight's frames; then any SurfaceView, because a game renders
+     * into its own surface rather than the activity's view hierarchy; then the
+     * {@code VRI-} view-root layer, which is where an ordinary UI app's frames
+     * would be; then anything else that named the package.
+     */
+    public static List<String> pickLayers(String listOut, String pkg) {
+        List<String> blast = new ArrayList<>(), surface = new ArrayList<>(),
+                     vri = new ArrayList<>(), rest = new ArrayList<>();
+        if (listOut == null || pkg == null || pkg.isEmpty()) return blast;
         for (String raw : listOut.split("\n")) {
             String line = raw.trim();
             if (line.isEmpty() || !line.contains(pkg)) continue;
-            // Skip the compositor's own bookkeeping layers, which contain a
-            // package name but never a game's frames.
-            if (line.startsWith("Dim Layer") || line.contains("ScreenDecor")
-                    || line.contains("InputMethod") || line.contains("Splash")) continue;
-            if (line.contains("SurfaceView")) return line;   // best possible match
-            if (best == null) best = line;                   // fall back to the activity layer
+            boolean skip = false;
+            for (String n : NEVER) if (line.contains(n)) { skip = true; break; }
+            if (skip) continue;
+            String name = layerNameOf(line);
+            if (name == null || !isSafeLayer(name)) continue;
+            if (name.contains("SurfaceView") && name.contains("(BLAST)")) blast.add(name);
+            else if (name.contains("SurfaceView")) surface.add(name);
+            else if (name.startsWith("VRI-")) vri.add(name);
+            else rest.add(name);
         }
-        return best;
+        blast.addAll(surface);
+        blast.addAll(vri);
+        blast.addAll(rest);
+        return blast;
     }
 
     // --- reading it --------------------------------------------------------
