@@ -74,11 +74,16 @@ generation kept, so the pair never exceeds 256 KiB. `aynkeyd log` prints both
 in order, so a problem that straddles a rotation still reads as one stream.
 
 **Read this rather than `logcat -s aynkeyd`.** The daemon logs to both, but
-logcat's main buffer on this device retains **under six minutes** — measured
-`Logspan 5:52`, because a boot pushes some 12 MB through a 256 KiB ring. The
-daemon's own start lines were already gone ten minutes after boot. By the time
-you notice the button is dead, logcat has nothing. Logcat is still the better
-*live* view: `logcat -s aynkeyd` while you press the button.
+logcat's main buffer on this device retains **minutes, not hours** — a boot
+pushes some 12 MB through a 256 KiB ring, so how far back it reaches depends
+on how noisy the rest of the system is. Measured twice on 2026-11-03:
+`Logspan 5:52` once, and `2:11` on another boot. In the second case the
+daemon's own start lines were gone **45 seconds** after it logged them — the
+buffer's earliest surviving entry was 22:23:49 and the daemon had started at
+22:23:04.
+
+By the time you notice the button is dead, logcat has nothing. Logcat is still
+the better *live* view: `logcat -s aynkeyd` while you press the button.
 
 One more reason to prefer the file: logcat's pid column does not belong to the
 daemon. `log` is a separate process, so each line is credited to a transient
