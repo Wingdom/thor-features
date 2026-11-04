@@ -205,6 +205,49 @@ cooling device was 34 on one boot and 35 on another on this same build.
 Nothing in the telemetry code names an index: discovery reads every `type`
 file and derives the paths from whichever matched.
 
+### The height budget is tight, and it is load-bearing
+
+The bottom screen is 620x540dp. Between the status bar (56px) and the
+navigation bar (96px) there are **928px**, and after the column's own margins
+this layout gets **816px**. Adding the tab strip pushed the Controls tab to
+928px of content, and because the window is `WRAP_CONTENT` and bottom-anchored
+the overflow came off the *last* child: the Mode card rendered at 101px of its
+221, with all three of its labels gone. It looked like a design choice rather
+than a bug, which is what made it worth measuring instead of eyeballing.
+
+Reclaimed by trimming padding throughout — the tab strip to 30dp, card
+paddings from 10/12dp to 6dp, item paddings from 6dp to 3dp — for a content
+height of **778px against 816 available**, about 38px of headroom. Nothing was
+resized: the sliders are still 40dp and the icons still 52dp.
+
+Do not restore those paddings without re-measuring. The quickest check is the
+bounds, not a screenshot:
+
+```sh
+adb shell uiautomator dump --display 1 /data/local/tmp/ui.xml
+adb pull /data/local/tmp/ui.xml && grep -o 'text="Only bottom screen"' ui.xml
+```
+
+If the Mode labels are missing from the dump, the card is being clipped.
+
+One caveat learned the hard way: `uiautomator dump` fails silently when the UI
+is not idle and leaves the *previous* file in place, so a stale dump reads as
+a confident wrong answer. Check the timestamp, or compare screenshot byte
+sizes, which differ clearly between the two tabs.
+
+### The tab strip moves between tabs
+
+The panel is bottom-anchored and `WRAP_CONTENT`, and the Telemetry card is much
+shorter than the two Controls cards, so the window top moves — `[0,190]` on
+Controls, `[0,461]` on Telemetry. **Mode does not move**; it stays at
+`[52,785]-[1188,968]` on both, which is the property that matters. But the tab
+strip travels about 271px, so the tab you just tapped is not where its
+neighbour will be.
+
+The consequence for anyone scripting the panel: re-read the tab bounds after
+every switch. A tap at the old coordinates lands outside the window and
+`windowCloseOnTouchOutside` dismisses the panel instead.
+
 ### The CPU row shows two numbers, and why not a tap
 
 `58%  2.71 GHz` — load and clock together, on the pattern the Fan row already
