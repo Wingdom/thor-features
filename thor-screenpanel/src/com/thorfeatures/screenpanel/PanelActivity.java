@@ -570,13 +570,19 @@ public final class PanelActivity extends Activity {
         rings.setVisibility(View.VISIBLE);
         bars.setVisibility(View.VISIBLE);
 
-        // Rings share the width evenly, and each is as tall as the row. The
-        // view draws a circle on min(width, height), so a cell wider than it
-        // is tall still renders round.
-        int ringHeight = Math.round(112 * getResources().getDisplayMetrics().density);
+        // Rings are sized by how much their reading matters, not evenly: the
+        // view draws its circle on min(width, height), so the height sets the
+        // diameter and the matching weight keeps the cell roughly square.
+        // Centred vertically so the smaller ones sit on the row's axis rather
+        // than hanging from its top.
+        float density = getResources().getDisplayMetrics().density;
         for (String key : Telemetry.ringKeys(l, fpsAvailable)) {
             RingGauge g = new RingGauge(this);
-            g.setLayoutParams(new LinearLayout.LayoutParams(0, ringHeight, 1f));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, Math.round(Telemetry.ringSizeDp(key) * density),
+                    Telemetry.ringWeight(key));
+            lp.gravity = android.view.Gravity.CENTER_VERTICAL;
+            g.setLayoutParams(lp);
             rings.addView(g);
             ringViews.put(key, g);
         }
