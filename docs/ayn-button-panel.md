@@ -261,9 +261,11 @@ adb shell su -c 'aynkeyd log 200'
 `/data/adb/thor-aynkey/aynkeyd.log` is bounded at 128 KiB with one generation
 kept, and it survives the death and a reboot. **Do not reach for
 `logcat -s aynkeyd` after the fact** — the daemon does log there, but the main
-buffer on this device retains under six minutes (`Logspan 5:52`), so it is
-empty long before anyone notices a dead button. It is still the better live
-view while you are pressing the button.
+buffer on this device retains minutes, not hours: `Logspan` measured 5:52 on
+one boot and 2:11 on another, and on the second the daemon's start lines were
+gone 45 seconds after it wrote them. It is empty long before anyone notices a
+dead button. It is still the better live view while you are pressing the
+button.
 
 The log names which part of the daemon went. It is a pipeline of three
 independently mortal processes plus a timer per press, and each labels its own
