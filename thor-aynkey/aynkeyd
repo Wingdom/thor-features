@@ -53,6 +53,7 @@
 #         aynkeyd stop
 #         aynkeyd status
 #         aynkeyd device              # print the resolved input node
+#         aynkeyd log [lines]         # the persistent log, both generations
 #
 # Safety:
 #   Reads one evdev node, writes no hardware node and no system property. The
@@ -73,12 +74,128 @@ DEVNAME=gpio-keys            # resolved by name, never by node number: event
                              # between sessions (event0 -> event3 on
                              # 2026-10-22, after an Xbox pad enumerated).
 
-STATE_DIR=/data/adb/thor-aynkey
+# Overridable only so the host tests can run the real daemon - traps, pidfile
+# and claim arbiter included - in a temp directory. Unset in every real
+# install; the module never sets it.
+STATE_DIR=${AYNKEYD_STATE_DIR:-/data/adb/thor-aynkey}
 PIDFILE=$STATE_DIR/aynkeyd.pid
 ACTION=$STATE_DIR/action.sh
 TAG=aynkeyd
 
-logit() { log -t "$TAG" "$*" 2>/dev/null; }
+# --- logging ------------------------------------------------------------------
+# Why a file as well as logcat:
+#   The daemon has always logged to logcat, and `logcat -s aynkeyd` works. It
+#   is still useless for diagnosing a death, because the main buffer on this
+#   device holds under six minutes. Measured 2026-11-03, with the daemon's own
+#   boot lines already gone ten minutes after boot:
+#
+#     $ logcat -S -b main   ->  Logspan 5:52.488
+#     12,215,433 bytes / 79,961 entries pushed through 256 KiB this boot;
+#     bluetooth 480 KB and system_server 366 KB dominate, root keeps 48 KB.
+#
+#   So by the time you notice the button is dead and reach a terminal, logcat
+#   has nothing. The file is the only copy that survives to be read. Same shape
+#   as thor-stickfx's and thor-fanctl's boot.log.
+#
+# Logcat is kept because it is the better *live* view - and because its pid
+# column is actively misleading here: `log` is a separate process, so a line
+# is attributed to the transient `log` pid, never to the daemon. The file
+# records $$ instead, which ties every line to one daemon run.
+#
+# Overridable so the host tests can drive the real logit and the real rotation
+# against a temp file rather than asserting on the text of this script.
+LOGFILE=${AYNKEYD_LOG:-$STATE_DIR/aynkeyd.log}
+LOG_MAX=${AYNKEYD_LOG_MAX:-131072}   # rotate past this; one generation kept,
+                                     # so the pair is bounded at 2x this.
+
+# Which part of the daemon is speaking. The daemon is a pipeline of three
+# independently-mortal processes plus a timer per press, and until now nothing
+# recorded which one went. Each sets this in its own subshell.
+STAGE=main
+
+# Rotate at a bounded size. Reconnects log every 2s, so a permanently absent
+# input device would otherwise grow the file without limit - that, not the
+# press rate, is the unbounded case.
+#
+# One fork per logged line (`wc -c`). That is deliberate: the daemon logs about
+# once per press, next to a `log` fork it already pays and an action script
+# that runs dumpsys, so the cost is noise. A cheaper counter-based check cannot
+# work here - logit is called from several subshells, which do not share a
+# counter.
+#
+# Two subshells can both decide to rotate at once. `mv` is atomic, so the worst
+# case is losing one generation, never a corrupt file.
+log_rotate() {
+    _sz=$(wc -c < "$LOGFILE" 2>/dev/null) || return 0
+    case "$_sz" in ''|*[!0-9]*) return 0 ;; esac
+    [ "$_sz" -gt "$LOG_MAX" ] || return 0
+    mv -f "$LOGFILE" "$LOGFILE.1" 2>/dev/null
+    return 0
+}
+
+# One line per event, to both sinks. Never writes to stdout: three of the four
+# callers are inside the pipeline, where a stray byte would be read back as
+# fake event data.
+#
+# The format is fixed and column-stable on purpose - it is read by `aynkeyd log`
+# and by whoever is looking at a death:
+#   2026-11-03 14:24:13 7481 main: started (threshold 2000ms, key KEY_F24)
+logit() {
+    _ts=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
+    printf '%s %s %s: %s\n' "$_ts" "$$" "$STAGE" "$*" >> "$LOGFILE" 2>/dev/null
+    log -t "$TAG" "$STAGE: $*" >/dev/null 2>&1
+    log_rotate
+}
+
+# --- what killed us -----------------------------------------------------------
+# The death this was written for left no trace: no OOM, no lmkd kill, and
+# nothing in logcat by the time it was looked at. These traps make the next one
+# say so itself.
+#
+# SIGKILL cannot be trapped, and that is the useful part: if the daemon is gone
+# and the log's last line is NOT one of these, it was SIGKILL or the kernel.
+# The absence is the evidence.
+#
+# Installed only in the foreground daemon - see cmd_start. A plain `aynkeyd
+# status` must not append an exit line to the log.
+on_signal() {
+    logit "exiting on SIG$1"
+    exit $((128 + $2))
+}
+
+install_traps() {
+    trap 'on_signal TERM 15' TERM
+    trap 'on_signal INT 2'   INT
+    trap 'on_signal HUP 1'   HUP
+    trap 'on_signal QUIT 3'  QUIT
+    # Catches the case the signal traps cannot: the shell exiting for an
+    # internal reason. run() loops forever, so reaching here at all is the
+    # finding. "input stream ended" absent AND this line present means the
+    # shell went, not getevent.
+    trap 'logit "shell exiting (rc=$?)"' EXIT
+}
+
+# Name the subshell we are now in, so a line can be attributed to the stage
+# that wrote it rather than just to the daemon.
+#
+# This used to also run `trap - EXIT TERM INT HUP QUIT`, on the assumption that
+# subshells inherit the traps above and that cmd_stop's group TERM would
+# therefore be reported five times over - once by the main shell, once by each
+# pipeline stage, once by a pending timer - burying the one line that matters.
+#
+# That assumption is wrong, measured 2026-11-03 on this device: a shell resets
+# trapped signals to their default in a subshell, so a TERM delivered to a
+# seven-member process group fired the handler exactly once, in the main shell,
+# and a subshell exiting normally did not run the inherited EXIT trap either.
+# Same result under mksh (the device), bash and dash. The reset was removed as
+# dead code; the guarantee it was meant to provide comes from the shell.
+#
+# tests/test_live.sh pins the guarantee itself - one "exiting on" line for a
+# group stop, taken while the pipeline is live - rather than pinning this
+# function, because that is the property the daemon actually depends on.
+enter_stage() {
+    STAGE=$1
+}
 
 # --- input device discovery ---------------------------------------------------
 # Walk getevent's device dump and return the node whose name is $DEVNAME *and*
@@ -178,7 +295,13 @@ dispatch() {
     kind=$1
     if [ -x "$ACTION" ]; then
         logit "$kind press -> $ACTION"
-        "$ACTION" "$kind" </dev/null >/dev/null 2>&1 &
+        # The action's exit status is logged too. It was previously discarded,
+        # which meant a press that reached a broken action.sh looked identical
+        # in the log to one that worked - and action.sh is the part that runs
+        # dumpsys, screenblank and am start, so it has the most to go wrong.
+        # Still backgrounded: nothing waits on it.
+        ( "$ACTION" "$kind"; logit "$kind action exited rc=$?" ) \
+            </dev/null >/dev/null 2>&1 &
     else
         logit "$kind press (no action installed at $ACTION)"
     fi
@@ -219,6 +342,7 @@ start_press() {
     # everywhere and is converted only here.
     secs=$(awk -v ms="$LONG_PRESS_MS" 'BEGIN { printf "%.3f", ms / 1000 }')
     (
+        enter_stage "timer.$press_seq"
         sleep "$secs"
         if mkdir "$claim" 2>/dev/null; then
             dispatch long
@@ -258,9 +382,10 @@ cancel_press() {
 # rather than dying, but back off so a permanently missing device does not
 # become a spin loop.
 run() {
-    logit "started (threshold ${LONG_PRESS_MS}ms, key $KEYNAME)"
     mkdir -p "$RUN_DIR" 2>/dev/null
+    logit "started (threshold ${LONG_PRESS_MS}ms, key $KEYNAME, log $LOGFILE)"
     rm -rf "$RUN_DIR"/claim.* 2>/dev/null
+    gen=0
     while :; do
         dev=$(find_device)
         if [ -z "$dev" ]; then
@@ -268,19 +393,42 @@ run() {
             sleep 10
             continue
         fi
-        logit "reading $dev"
-        # The `while read` is the tail of a pipeline, so it runs in a
-        # subshell - which is fine here, and worth stating because it looks
-        # like a bug: claim/timer_pid live in that subshell and it survives
-        # for the whole lifetime of the stream, which is exactly the scope
-        # they need. Nothing outside the loop reads them.
-        getevent -lt "$dev" 2>/dev/null | emit_events | while read -r kind ts; do
-            case "$kind" in
-                down) [ -n "$claim" ] && cancel_press
-                      start_press ;;
-                up)   end_press ;;
-            esac
-        done
+        gen=$((gen + 1))
+        logit "reading $dev (connection $gen)"
+        # Each pipeline stage is its own process and any of the three can die
+        # independently - which is exactly what the unexplained death of
+        # 2026-10-29 could not be pinned on, because nothing recorded which
+        # one went. There is no PIPESTATUS in mksh, so each stage reports its
+        # own exit status itself, from inside its own subshell.
+        #
+        # The groups are also why enter_stage exists: a subshell inherits the
+        # daemon's traps, and three stages each reporting the daemon's exit
+        # would bury the one line that matters.
+        #
+        # The `while read` is still the tail of the pipeline, so it still runs
+        # in a subshell - worth restating because it looks like a bug:
+        # claim/press_seq live in that subshell and it survives for the whole
+        # lifetime of the stream, which is exactly the scope they need.
+        # Nothing outside the loop reads them.
+        #
+        # logit writes to the file and to logd, never to stdout, so the two
+        # upstream stages can log without injecting bytes into the stream.
+        { enter_stage "getevent.$gen"
+          getevent -lt "$dev" 2>/dev/null
+          logit "getevent exited rc=$?"
+        } | { enter_stage "parser.$gen"
+          emit_events
+          logit "parser exited rc=$?"
+        } | { enter_stage "reader.$gen"
+          while read -r kind ts; do
+              case "$kind" in
+                  down) [ -n "$claim" ] && cancel_press
+                        start_press ;;
+                  up)   end_press ;;
+              esac
+          done
+          logit "reader exited rc=$?"
+        }
         logit "input stream for $dev ended; reconnecting in 2s"
         sleep 2
     done
@@ -304,6 +452,8 @@ cmd_start() {
     mkdir -p "$STATE_DIR" 2>/dev/null
     if [ "${1:-}" = "--foreground" ]; then
         echo $$ > "$PIDFILE"
+        # Only here. `aynkeyd status` must not append an exit line to the log.
+        install_traps
         run
         return 0
     fi
@@ -319,6 +469,10 @@ cmd_start() {
 
 cmd_stop() {
     if pid=$(running_pid); then
+        # Record who asked, so a deliberate stop is never mistaken for a death.
+        # This is the single most useful line in the file: the 2026-10-29 death
+        # was investigated without knowing whether anything had asked it to go.
+        logit "stop requested (pid $pid) by uid ${AYNKEYD_CALLER:-$(id -u 2>/dev/null)}"
         # Kill the process group: the daemon is a pipeline, so killing only the
         # shell would leave getevent holding the device.
         kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
@@ -348,6 +502,22 @@ cmd_status() {
     else
         echo "action        : <none installed>  (presses are logged only)"
     fi
+    if [ -f "$LOGFILE" ]; then
+        echo "log           : $LOGFILE ($(wc -c < "$LOGFILE" 2>/dev/null) bytes, max $LOG_MAX x2)"
+        echo "last           : $(tail -n 1 "$LOGFILE" 2>/dev/null)"
+    else
+        echo "log           : $LOGFILE (not written yet)"
+    fi
+}
+
+# Show the persistent log, oldest generation first so one stream reads in
+# order. This is the whole point of the file: `logcat -s aynkeyd` keeps under
+# six minutes on this device, so by the time a dead button is noticed it has
+# nothing left to say.
+cmd_log() {
+    n=${1:-80}
+    case "$n" in ''|*[!0-9]*) echo "aynkeyd: log takes a line count" >&2; return 2 ;; esac
+    { cat "$LOGFILE.1" 2>/dev/null; cat "$LOGFILE" 2>/dev/null; } | tail -n "$n"
 }
 
 case "${1:-}" in
@@ -355,6 +525,11 @@ case "${1:-}" in
     stop)    cmd_stop ;;
     status)  cmd_status ;;
     device)  find_device ;;
+    log)     shift; cmd_log "${1:-80}" ;;
+    # Hidden, for tests/test_log.sh: emit one line through the real logit, so
+    # the format and the rotation are tested by running them rather than by
+    # grepping this file. Point AYNKEYD_LOG at a temp file first.
+    _log)    shift; STAGE=${1:-test}; shift; logit "$*" ;;
     # Hidden, for tests/test_parse.sh: replay recorded getevent output through
     # the real event parser and the real press rules, with no device, no timer
     # and no dispatch.
@@ -365,13 +540,21 @@ aynkeyd - bind the AYN button (KEY_F24) to short and long press actions
 
   aynkeyd start [--foreground]   run the daemon
   aynkeyd stop                   stop it
-  aynkeyd status                 daemon, resolved device, configured action
+  aynkeyd status                 daemon, resolved device, configured action, log
   aynkeyd device                 print the resolved input node
+  aynkeyd log [lines]            the persistent log (default 80 lines)
 
-A short press (released early) and a long press (fires after\n${LONG_PRESS_MS} ms, without waiting for release) each run:
+A short press (released early) and a long press (fires after
+${LONG_PRESS_MS} ms, without waiting for release) each run:
   $ACTION <short|long>
 With no such file the daemon only logs, so it is inert until an action is
-installed. Watch it with:  logcat -s $TAG
+installed.
+
+Watching it:
+  aynkeyd log 200        survives a death and a reboot; read this one
+  logcat -s $TAG      live only - the main buffer holds under six
+                         minutes on this device, so it is empty by the time
+                         a dead button is noticed
 USAGE
         [ "${1:-}" = "" ] && exit 0 || exit 2 ;;
 esac
