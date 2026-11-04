@@ -551,43 +551,63 @@ public final class PanelActivity extends Activity {
         }
     };
 
-    /** Build the ring row and the bar row from what discovery found. */
+    /** Build the ring cards and the temperature section from what was found. */
     private void buildGauges(Telemetry.Layout l) {
-        LinearLayout rings = findViewById(R.id.ring_row);
+        LinearLayout cards = findViewById(R.id.ring_cards);
         LinearLayout bars  = findViewById(R.id.bar_row);
-        rings.removeAllViews();
+        cards.removeAllViews();
         bars.removeAllViews();
         ringViews.clear();
         barViews.clear();
 
         if (l.isEmpty()) {
             findViewById(R.id.gauge_empty).setVisibility(View.VISIBLE);
-            rings.setVisibility(View.GONE);
+            cards.setVisibility(View.GONE);
             bars.setVisibility(View.GONE);
             return;
         }
         findViewById(R.id.gauge_empty).setVisibility(View.GONE);
-        rings.setVisibility(View.VISIBLE);
+        cards.setVisibility(View.VISIBLE);
         bars.setVisibility(View.VISIBLE);
 
-        // Rings are sized by how much their reading matters, not evenly: the
-        // view draws its circle on min(width, height), so the height sets the
-        // diameter and the matching weight keeps the cell roughly square.
-        // Centred vertically so the smaller ones sit on the row's axis rather
-        // than hanging from its top.
-        float density = getResources().getDisplayMetrics().density;
-        for (String key : Telemetry.ringKeys(l, fpsAvailable)) {
-            RingGauge g = new RingGauge(this);
+        final float density = getResources().getDisplayMetrics().density;
+        final int gap = Math.round(6 * density);   // the panel's own card gap
+        LayoutInflater inf = LayoutInflater.from(this);
+
+        List<List<String>> groups = Telemetry.ringGroups(l, fpsAvailable);
+        // Every card gets the height of the largest ring on show, plus the
+        // card's own padding, rather than wrapping its own contents. Left to
+        // wrap, the card holding the small rings finishes higher than the one
+        // beside it and the row reads as ragged rather than as a set.
+        int cardHeight = Math.round(Telemetry.maxRingSizeDp(groups) * density)
+                + Math.round(28 * density);
+        for (int i = 0; i < groups.size(); i++) {
+            List<String> group = groups.get(i);
+            LinearLayout card = (LinearLayout) inf.inflate(R.layout.ring_card, cards, false);
+            // The card's share of the row follows the rings it holds, so the
+            // cards stay proportional to their contents rather than to how
+            // many of them there are.
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    0, Math.round(Telemetry.ringSizeDp(key) * density),
-                    Telemetry.ringWeight(key));
-            lp.gravity = android.view.Gravity.CENTER_VERTICAL;
-            g.setLayoutParams(lp);
-            rings.addView(g);
-            ringViews.put(key, g);
+                    0, cardHeight, Telemetry.groupWeight(group));
+            if (i > 0) lp.leftMargin = gap;
+            card.setLayoutParams(lp);
+
+            for (String key : group) {
+                RingGauge g = new RingGauge(this);
+                // The view draws its circle on min(width, height), so the
+                // height sets the diameter and the weight keeps the cell
+                // roughly square.
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                        0, Math.round(Telemetry.ringSizeDp(key) * density),
+                        Telemetry.ringWeight(key));
+                rp.gravity = android.view.Gravity.CENTER_VERTICAL;
+                g.setLayoutParams(rp);
+                card.addView(g);
+                ringViews.put(key, g);
+            }
+            cards.addView(card);
         }
 
-        LayoutInflater inf = LayoutInflater.from(this);
         for (String key : Telemetry.barKeys(l)) {
             View tile = inf.inflate(R.layout.gauge_tile, bars, false);
             ((TextView) tile.findViewById(R.id.tile_label)).setText(Telemetry.gaugeLabel(key));

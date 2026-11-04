@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 421 host tests + 17 action tests, then packages
+./build.sh      runs 431 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -176,9 +176,13 @@ is the readings, which nobody presses a button in order to look at.
 
 ## What the telemetry tab can and cannot show
 
-Four ring gauges over four bars, after the shape stock's own overlay used.
-The rings are what moves while a game runs; the bars are what you check
-rather than watch.
+Three cards of ring gauges over a card of bars, after the shape stock's own
+overlay used. The rings are what moves while a game runs; the bars are what
+you check rather than watch.
+
+The gaps between the cards do the grouping: **FPS** is what the game is
+doing, **CPU · GPU** is what the chip is doing, **PWR · RAM** is what the
+device is spending, and the temperatures and fan have a section of their own.
 
 | ring | shows | source |
 |---|---|---|

@@ -124,12 +124,16 @@
         </LinearLayout>
 
         <!-- The telemetry tab. Starts hidden: Controls is the tab the button
-             opens onto, because the button exists to change something. -->
+             opens onto, because the button exists to change something.
+
+             No background on this one, unlike the cards above it: it is a
+             container, and the cards are inside it. The tab is several cards
+             with gaps between them rather than one, so that the gaps can do
+             the grouping. -->
         <LinearLayout
             android:id="@+id/card_telemetry"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/panel_card"
             android:orientation="vertical"
             android:visibility="gone">
 
