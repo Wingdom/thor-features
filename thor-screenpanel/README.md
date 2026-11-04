@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 38 host tests + 8 action tests, then packages
+./build.sh      runs 182 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -58,6 +58,48 @@ current mode is read back off the device, not remembered, because the AYN
 button's long press can change it while the panel is open.
 
 It calls `screenblank` and `screenmove`. It reimplements neither.
+
+## The launcher icon is the way back
+
+The app shows one icon, **AYN Panel**. It is not a second way to open the panel
+for convenience — it is the repair path.
+
+When `aynkeyd` dies the button goes completely dead: no panel, and no long press
+to bring the bottom screen back, since both come from that one daemon. Before
+this icon existed the only fix was `adb shell su -c 'aynkeyd start'`, which is
+no use away from a host.
+
+Tapping it runs two commands as root:
+
+```
+/system/bin/aynkeyd start              # idempotent; reports an existing daemon
+/data/adb/thor-aynkey/action.sh short  # the daemon's own short-press path
+```
+
+The second one is the point. It does **not** reimplement what a press means —
+unblanking the bottom screen, resolving the bottom display id, placing the
+panel there — it runs the same script the daemon runs. A launcher tap and a
+button press therefore cannot drift apart.
+
+Two details that look like oversights and are not:
+
+- **The icon is on `LaunchActivity`, not `PanelActivity`.** A launcher tap
+  starts an activity on the display the launcher is on — the top screen — and
+  this panel is bottom-screen only. `action.sh` is what places it correctly.
+- **`LaunchActivity` draws nothing.** It runs the two commands and finishes;
+  the panel appearing on the bottom screen is the feedback. Its window is
+  transparent and undimmed rather than `windowNoDisplay`, because a no-display
+  activity must finish before it resumes, and finishing first would drop the
+  process to background priority with the `su` calls still in flight.
+
+It toasts only when the result is not obvious: that it had to restart a dead
+daemon, that the daemon would not start (no root, or `thor-aynkey` missing), or
+that the action script failed (`install.sh` never run). A plain success says
+nothing — a toast on the top screen announcing a panel you can see on the
+bottom one is noise.
+
+Then read `aynkeyd log` to find out why it died; the daemon keeps a bounded
+file for exactly that, because logcat here retains under six minutes.
 
 ## It is bottom-screen only
 

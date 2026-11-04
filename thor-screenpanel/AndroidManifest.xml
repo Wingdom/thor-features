@@ -47,5 +47,41 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- The launcher icon, and the way back when aynkeyd has died.
+
+             With the daemon gone the AYN button does nothing at all - no
+             panel, and no long press to bring the bottom screen back - and the
+             only fix was `adb shell su -c 'aynkeyd start'`, which is no use
+             away from a host. This restarts the daemon if it is not running
+             and then opens the panel.
+
+             Why the LAUNCHER category is here and NOT on PanelActivity: a
+             launcher tap starts an activity on the display the launcher is on,
+             which is the top screen, and the panel is bottom-screen only by
+             the user's decision. This activity instead runs the daemon's own
+             action script, so a tap and a button press go down one path
+             rather than two that drift apart.
+
+             It renders nothing. persistableMode and excludeFromRecents for
+             the same reason as the panel above: a translucent activity
+             restored into an empty task after a reboot looks like a failed
+             screen. -->
+        <activity
+            android:name=".LaunchActivity"
+            android:exported="true"
+            android:label="@string/launch_label"
+            android:icon="@drawable/ic_screenpanel"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:finishOnTaskLaunch="true"
+            android:persistableMode="persistNever"
+            android:theme="@style/LaunchTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

@@ -28,4 +28,9 @@
     <string name="haptics_on">On</string>
     <string name="haptics_off">Off</string>
     <string name="cleaned">Background apps cleared</string>
+    <!-- The launcher icon: the way back when the button daemon has died. -->
+    <string name="launch_label">AYN Panel</string>
+    <string name="launch_restarted">Button daemon was not running \u2014 restarted</string>
+    <string name="launch_no_daemon">Could not start the button daemon \u2014 is thor-aynkey installed, and root granted?</string>
+    <string name="launch_no_action">Daemon is running, but the panel would not open \u2014 run thor-screenpanel/install.sh</string>
 </resources>

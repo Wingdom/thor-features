@@ -751,6 +751,114 @@ public final class TestMain {
         check("and ends with an ellipsis rather than mid-word", true, trimmed.endsWith("\u2026"));
         check("and does not cut inside a word", true, !trimmed.contains("verylongwordher\u2026"));
 
+        // --- Recovery: the launcher icon --------------------------------
+        // The way back when aynkeyd has died. With the daemon gone the AYN
+        // button does nothing at all, including the long press that is
+        // normally the way back from a dark bottom screen, so this is the
+        // only route that does not need a host and adb.
+        //
+        // Exercised through a fake runner that records the commands and
+        // replies to them, which is the same seam the rest of this file uses.
+
+        // It must run the daemon's OWN action script, not a second
+        // "open the panel" path of its own. A divergent copy of what a press
+        // means is the mistake this project already regretted once, when the
+        // panel grew its own copy of screenmove's rules.
+        check("the open command is the action script, with the press kind",
+              "/data/adb/thor-aynkey/action.sh short", Recovery.OPEN_COMMAND);
+        check("the start command is idempotent aynkeyd start",
+              "/system/bin/aynkeyd start", Recovery.START_COMMAND);
+
+        // `aynkeyd start` reports which of the two things it did, and the
+        // difference is the whole point: "the daemon had died" is a fact the
+        // user wants, and claiming it falsely would be worse than silence.
+        check("a fresh start is reported as a restart", true,
+              Recovery.restarted("aynkeyd: started (pid 8032)"));
+        check("an existing daemon is not", false,
+              Recovery.restarted("aynkeyd: already running (pid 8032)"));
+        check("unrecognised output does not claim a restart", false,
+              Recovery.restarted("something else entirely"));
+        check("null output does not claim a restart", false, Recovery.restarted(null));
+        check("empty output does not claim a restart", false, Recovery.restarted(""));
+
+        // The order matters and is not interchangeable: starting the daemon
+        // first is what makes the tap work when the daemon is the thing that
+        // is broken.
+        final java.util.List<String> ran = new java.util.ArrayList<>();
+        RootClient.Runner recorder = argv -> {
+            String cmd = argv[argv.length - 1];
+            ran.add(cmd);
+            if (cmd.equals(Recovery.START_COMMAND)) {
+                return new RootClient.Result(0, "aynkeyd: already running (pid 8032)");
+            }
+            return new RootClient.Result(0, "");
+        };
+        Recovery.Outcome outcome = Recovery.tap(new RootClient(recorder));
+        check("a healthy daemon reports OPENED", Recovery.Outcome.OPENED, outcome);
+        check("two commands run, daemon first",
+              "[/system/bin/aynkeyd start, /data/adb/thor-aynkey/action.sh short]",
+              ran.toString());
+
+        // A dead daemon: restarted, then the panel opened. The user is told,
+        // because a daemon that died once has died for a reason.
+        ran.clear();
+        RootClient.Runner deadThenUp = argv -> {
+            String cmd = argv[argv.length - 1];
+            ran.add(cmd);
+            if (cmd.equals(Recovery.START_COMMAND)) {
+                return new RootClient.Result(0, "aynkeyd: started (pid 9001)");
+            }
+            return new RootClient.Result(0, "");
+        };
+        check("a dead daemon is restarted and reported",
+              Recovery.Outcome.RESTARTED_AND_OPENED,
+              Recovery.tap(new RootClient(deadThenUp)));
+
+        // No root, or no module: the first command cannot run. The action
+        // script must NOT then be attempted - there is nothing to open the
+        // panel with, and a second failing su call is a second Magisk prompt.
+        ran.clear();
+        RootClient.Runner noRoot = argv -> {
+            ran.add(argv[argv.length - 1]);
+            return new RootClient.Result(1, "su: permission denied");
+        };
+        check("a failed start reports DAEMON_FAILED", Recovery.Outcome.DAEMON_FAILED,
+              Recovery.tap(new RootClient(noRoot)));
+        check("and does not go on to run the action script",
+              "[/system/bin/aynkeyd start]", ran.toString());
+
+        // The daemon is fine but the action script is missing - the case where
+        // thor-aynkey is installed and install.sh was never run.
+        RootClient.Runner noAction = argv -> {
+            String cmd = argv[argv.length - 1];
+            if (cmd.equals(Recovery.START_COMMAND)) {
+                return new RootClient.Result(0, "aynkeyd: already running (pid 8032)");
+            }
+            return new RootClient.Result(127, "sh: action.sh: not found");
+        };
+        check("a missing action script reports PANEL_FAILED", Recovery.Outcome.PANEL_FAILED,
+              Recovery.tap(new RootClient(noAction)));
+
+        // Which outcomes are worth a toast. A plain success is not: the panel
+        // appearing on the bottom screen is its own feedback, and a toast on
+        // the TOP screen announcing it would be noise. The other three are
+        // indistinguishable from "nothing happened" without one.
+        check("a plain success says nothing", false,
+              Recovery.needsMessage(Recovery.Outcome.OPENED));
+        check("a restart is announced", true,
+              Recovery.needsMessage(Recovery.Outcome.RESTARTED_AND_OPENED));
+        check("a daemon failure is announced", true,
+              Recovery.needsMessage(Recovery.Outcome.DAEMON_FAILED));
+        check("a panel failure is announced", true,
+              Recovery.needsMessage(Recovery.Outcome.PANEL_FAILED));
+
+        // Nothing user-supplied or device-read reaches the argv, same property
+        // the rest of the panel's commands have.
+        for (String cmd : new String[] { Recovery.START_COMMAND, Recovery.OPEN_COMMAND }) {
+            check("no shell metacharacter in [" + cmd + "]", true,
+                  !cmd.matches(".*[;&|`$<>(){}\\\\\"'\n].*"));
+        }
+
         System.out.println();
         System.out.println("  " + pass + " passed, " + fail + " failed");
         if (fail != 0) System.exit(1);

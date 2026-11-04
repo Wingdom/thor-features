@@ -21,4 +21,18 @@
         <item name="android:backgroundDimAmount">0.45</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.InputMethod</item>
     </style>
+
+    <!-- The launcher entry renders nothing: it runs two root commands and
+         finishes. Transparent and undimmed rather than windowNoDisplay, which
+         would require finishing before resume and so would drop the process to
+         background priority with the su calls still running. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.DeviceDefault.Dialog">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

@@ -210,7 +210,8 @@ flashing a zip does not change the running copy until you reboot.
 **Hold the AYN button for 2 seconds.** That is the whole answer, and it is why
 the long press does not depend on the panel.
 
-Failing that, from a host:
+If the button itself does nothing, the daemon has died — see **If the button is
+dead** below. Failing that, from a host:
 
 ```sh
 adb shell su -c 'screenblank restore'
@@ -223,6 +224,54 @@ neither is persistent.
 The module also refuses to blank one panel while the other is already
 blanked — both screens dark is a device that looks dead.
 
+## If the button is dead
+
+When `aynkeyd` dies the button goes completely dead: no panel from a short
+press, and no long press to bring the bottom screen back. Both halves of the
+binding are gone, because both are delivered by that one daemon.
+
+**Tap the "AYN Panel" icon in the app list.** It restarts the daemon if one is
+not running, then opens the panel. That is the whole fix, and it needs no host.
+
+It is deliberately not a second implementation of what a press means. The icon
+runs `aynkeyd start` — idempotent, so it reports an already-running daemon and
+does nothing — and then `action.sh short`, the same script the daemon runs for
+a real short press. One path, so a tap and a press cannot drift apart.
+
+The icon is on `LaunchActivity`, not on `PanelActivity`. A launcher tap starts
+an activity on the display the launcher is on, which is the top screen, and
+this panel is bottom-screen only; `action.sh` is what resolves the bottom
+display and places it. `LaunchActivity` renders nothing of its own — it runs
+two root commands and finishes, and the panel appearing is the feedback. It
+toasts only when something went wrong, or when it had to restart a dead daemon,
+because that last fact is worth knowing.
+
+From a host the equivalent is:
+
+```sh
+adb shell su -c 'aynkeyd start'
+```
+
+### Then find out why it died
+
+```sh
+adb shell su -c 'aynkeyd log 200'
+```
+
+`/data/adb/thor-aynkey/aynkeyd.log` is bounded at 128 KiB with one generation
+kept, and it survives the death and a reboot. **Do not reach for
+`logcat -s aynkeyd` after the fact** — the daemon does log there, but the main
+buffer on this device retains under six minutes (`Logspan 5:52`), so it is
+empty long before anyone notices a dead button. It is still the better live
+view while you are pressing the button.
+
+The log names which part of the daemon went. It is a pipeline of three
+independently mortal processes plus a timer per press, and each labels its own
+lines and reports its own exit status. `thor-aynkey/README.md` has the table
+that reads a death off the last few lines; the short version is that
+**no exit line at all means SIGKILL or the kernel**, because neither can be
+trapped, so the absence is the evidence.
+
 ## Things worth knowing
 
 - **Suspend and resume reset the screen mode.** If the device sleeps while on
@@ -233,6 +282,9 @@ blanked — both screens dark is a device that looks dead.
   Mode is the half that carries screen on/off; the rest is not implemented.
 - **`thor-screenpanel` has no Magisk module.** It is an ordinary APK plus the
   action script, which is also why it has an `install.sh` rather than a zip.
+- **The app has two activities and one icon.** `PanelActivity` is the panel and
+  has no launcher category; `LaunchActivity` is the icon and the repair path.
+  Neither holds any permission — everything goes through `su`.
 - **Apps do not default to the top screen.** That is a different problem and
   still unsolved — the relevant framework switch is not reachable from a Magisk
   module.
@@ -246,6 +298,10 @@ adb uninstall com.thorfeatures.screenpanel
 adb shell "su -c 'rm -f /data/adb/thor-aynkey/action.sh'"
 # then disable or remove the modules in Magisk, and reboot
 ```
+
+`thor-aynkey`'s uninstall leaves `/data/adb/thor-aynkey/aynkeyd.log` behind, on
+purpose and for the same reason it leaves `action.sh`: if the module is being
+reinstalled to fix something, the log is the record of what needed fixing.
 
 With `action.sh` gone the button becomes inert again — the daemon still detects
 presses and simply has nothing to run. `screenblank` and `screenmove` remain
