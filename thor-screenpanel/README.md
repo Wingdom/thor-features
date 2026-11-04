@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 349 host tests + 17 action tests, then packages
+./build.sh      runs 385 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -155,8 +155,8 @@ exist on this build — it reads `null` — so this drives
 so a renamed state breaks the build instead of silently invoking an argument
 the CLI no longer accepts.
 
-**Telemetry** — live readings on their own tab: CPU clock, GPU load, the
-hottest CPU core, board and USB temperature, fan duty, battery power and
+**Telemetry** — live readings on their own tab: CPU load and clock, GPU load,
+the hottest CPU core, board and USB temperature, fan duty, battery power and
 memory in use. Everything there is a read; nothing on that tab writes to the
 device.
 
@@ -178,8 +178,8 @@ is the readings, which nobody presses a button in order to look at.
 
 | gauge | source |
 |---|---|
-| CPU clock | `scaling_cur_freq`, per cluster — three on this chip, not eight cores |
-| GPU load | `gpu_busy_percentage` — utilisation, **not** clock; see below |
+| CPU | load **and** clock — `58%  2.71 GHz`. Load from `/proc/stat`, clock from `scaling_cur_freq` per cluster (three on this chip, not eight cores), showing the fastest |
+| GPU | load — `gpu_busy_percentage`. Utilisation, **not** clock; see below |
 | CPU / board / USB temperature | thermal zones, resolved by `type`, hottest of each group |
 | Fan | `pwm1` duty, and the thermal governor's cooling state |
 | Power | `current_now` × `voltage_now`, with the direction taken from `status` |
@@ -198,6 +198,18 @@ own transition counters show all of the GPU's recorded time at that one step
 and none at any of the other eight, so a clock gauge would sit at a confident
 "680 MHz" forever whether the GPU was busy or asleep. Utilisation moves, so
 utilisation is what the row shows.
+
+**The CPU row carries two numbers**, on the pattern the Fan row already set
+(`38%  3/8`). Load answers "is it working hard" and lines up with the GPU row
+below it; the clock answers "is it being allowed to", which on a handheld is
+the one that tells you about throttling. Load is a delta between ticks, so the
+first tick after opening the tab shows the clock alone.
+
+**Battery direction** comes from `status` where that is decisive, and from the
+sign of `current_now` where it is not — "Not charging" is a long-running state
+on this device while the charger holds, and a bare unsigned "6.05 W" cannot be
+interpreted. Positive is into the battery, negative out of it; both directions
+were observed.
 
 **"Board", not "Skin".** This device has 60 thermal zones and not one of them
 is a skin sensor. The row reads `xo-therm`, a thermistor on the board — the

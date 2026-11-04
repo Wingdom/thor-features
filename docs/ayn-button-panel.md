@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 349 tests
+feature on the host with no device and no root — that is how all 385 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -204,6 +204,49 @@ Thermal zone and cooling device numbers are assigned at boot. The fan's
 cooling device was 34 on one boot and 35 on another on this same build.
 Nothing in the telemetry code names an index: discovery reads every `type`
 file and derives the paths from whichever matched.
+
+### The CPU row shows two numbers, and why not a tap
+
+`58%  2.71 GHz` — load and clock together, on the pattern the Fan row already
+set with `38%  3/8`.
+
+A tap that toggled between them was considered and rejected. It hides half the
+reading behind a gesture nothing advertises; it would leave the CPU row
+tappable while the GPU row beside it cannot be, since there is no live GPU
+clock to toggle to; and the gauge rows are deliberately styled as readings
+rather than controls — a 6dp bar against the brightness slider's 40dp — so
+making one of them answer touch argues with what the styling is there to say.
+
+Load leads because it lines up with the GPU row directly below and answers
+"is it working hard". The clock follows because on a handheld it answers "is it
+being allowed to". The bar tracks load, so the CPU and GPU bars mean the same
+thing and can be read against each other.
+
+Load is a delta of `/proc/stat` jiffies, so it does not exist until there are
+two samples. The first tick shows the clock alone rather than an em dash beside
+a real number, and the bar falls back to the clock against `cpuinfo_max_freq`
+for that one tick. `/proc/stat` rides in the same `grep` — 1417 bytes over 16
+lines on this device, so carrying it whole costs nothing where a second fork
+costs 13 ms.
+
+One trap in parsing it: the aggregate `cpu` line and the per-core `cpu0`..`cpu7`
+lines are in the same file and start with the same three letters, so matching
+on a prefix reports one core's load as the whole chip's. The match is on the
+whole first token.
+
+### Battery direction needs both sources
+
+`status` is preferred — it says "Charging" or "Discharging" in words and cannot
+be misread. But it is frequently neither. Plugged in at 85%, this device sits
+at **"Not charging"** for long stretches while the charger holds, and taking
+the sign from `status` alone rendered a real reading as a bare `6.05 W` with no
+direction at all. Worse than wrong: uninterpretable.
+
+So an undecided `status` falls through to the sign of `current_now`. Both
+directions of that register have been observed here — `+229619` while charging,
+and negative at 6.05 W under a CPU load with the charger still holding, which
+is the battery supplementing a charger supplying less than the load wanted.
+Positive is into the battery, negative out of it.
 
 ### Ask the residency counter before trusting a node
 

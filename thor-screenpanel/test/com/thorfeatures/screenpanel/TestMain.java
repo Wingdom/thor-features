@@ -1013,6 +1013,7 @@ public final class TestMain {
         check("the tick reads battery current", true,
               tickCmd.contains("/sys/class/power_supply/battery/current_now"));
         check("the tick reads meminfo", true, tickCmd.contains("/proc/meminfo"));
+        check("the tick reads /proc/stat for CPU load", true, tickCmd.contains("/proc/stat"));
         check("the tick reads the GPU", true, tickCmd.contains("gpu_busy_percentage"));
         // One fork, not two. Measured on device: two greps 41 ms, one grep
         // 26 ms, and a bare one-file grep 13 ms - so a fork costs 13 ms and
@@ -1064,7 +1065,12 @@ public final class TestMain {
           + "/proc/meminfo:MemTotal:        7372144 kB\n"
           + "/proc/meminfo:MemFree:          312884 kB\n"
           + "/proc/meminfo:MemAvailable:    4679920 kB\n"
-          + "/proc/meminfo:Buffers:          48216 kB\n";
+          + "/proc/meminfo:Buffers:          48216 kB\n"
+          + "/proc/stat:cpu  1100 0 550 8300 110 0 0 0 0 0\n"
+          + "/proc/stat:cpu0 300 0 150 2000 30 0 0 0 0 0\n"
+          + "/proc/stat:cpu7 100 0 50 2100 20 0 0 0 0 0\n"
+          + "/proc/stat:intr 123456 1 2 3 4 5 6 7 8 9\n"
+          + "/proc/stat:ctxt 998877\n";
 
         Telemetry.Readings r = Telemetry.parseTick(tickOut, l);
         check("three cluster frequencies", 3, r.cpuKhz.size());
@@ -1084,6 +1090,11 @@ public final class TestMain {
         // The single grep returns the whole file; the keys we do not want must
         // fall through rather than land in a gauge.
         check("an unwanted meminfo key is ignored", 4679920L, r.memAvailKb);
+        check("jiffy counters were read", 10060L, r.cpuTotalJiffies);
+        check("idle counts iowait as idle", 8410L, r.cpuIdleJiffies);
+        // One sample is not a rate. ABSENT rather than 0, because 0% would
+        // claim an idle CPU at the moment the panel has no idea.
+        check("no utilisation from a single tick", Telemetry.ABSENT, r.cpuUtilPct);
 
         Telemetry.Readings empty = Telemetry.parseTick("", l);
         check("an empty reply yields no CPU reading", Telemetry.ABSENT, empty.cpuMaxKhz());
@@ -1147,8 +1158,31 @@ public final class TestMain {
               Telemetry.formatWatts(1250000L, 3912000L, "Discharging"));
         check("a negative current charging is still positive", "+4.89 W",
               Telemetry.formatWatts(-1250000L, 3912000L, "Charging"));
-        check("an unknown status gets no sign", "4.89 W",
+        // "Not charging" is not an edge case on this device - plugged in at
+        // 85% it sits there while the charger holds. Taking the sign from
+        // status alone rendered a real 6.05 W reading with no direction, which
+        // is worse than being wrong because it cannot be interpreted at all.
+        check("an undecided status falls back to the current's sign", "+4.89 W",
               Telemetry.formatWatts(1250000L, 3912000L, "Not charging"));
+        check("and the other way", "\u22124.89 W",
+              Telemetry.formatWatts(-1250000L, 3912000L, "Not charging"));
+        check("Full behaves the same way", "+4.89 W",
+              Telemetry.formatWatts(1250000L, 3912000L, "Full"));
+        check("a null status still uses the current", "+4.89 W",
+              Telemetry.formatWatts(1250000L, 3912000L, null));
+        // Status still wins where it is decisive, because it cannot be misread.
+        check("status outranks the current's sign", "\u22124.89 W",
+              Telemetry.formatWatts(1250000L, 3912000L, "Discharging"));
+        // Zero needs no sign; the device's real held state.
+        check("a held charger reads zero, unsigned", "0.00 W",
+              Telemetry.formatWatts(0L, 4273296L, "Not charging"));
+        // Both directions of current_now are observed on this device, not
+        // inferred: +229619 while charging, and negative under a CPU load with
+        // the charger holding at 85% - the battery supplementing a charger
+        // supplying less than the load wanted, while status still read
+        // "Not charging". That second case is this one.
+        check("the battery supplementing a held charger reads negative",
+              "\u22126.05 W", Telemetry.formatWatts(-1415000L, 4273296L, "Not charging"));
         check("watts absent", Telemetry.NONE,
               Telemetry.formatWatts(Telemetry.ABSENT, 3912000L, "Discharging"));
 
@@ -1194,6 +1228,8 @@ public final class TestMain {
         check("the battery row is called Power", "Power", Telemetry.gaugeLabel("battery"));
 
         check("a gauge renders its reading", "2.71 GHz", Telemetry.gaugeValue("cpu", r, null));
+        check("the CPU gauge shows the fastest cluster, not an average", "2.71 GHz",
+              Telemetry.formatCpuFreq(r.cpuMaxKhz()));
         check("the GPU gauge renders a percentage", "4%",
               Telemetry.gaugeValue("gpu", r, null));
         check("the power gauge renders the device's own reading", "+0.98 W",
@@ -1203,7 +1239,8 @@ public final class TestMain {
               Telemetry.gaugeValue("temp:CPU", r, null));
         check("a gauge with no group reads absent", Telemetry.NONE,
               Telemetry.gaugeValue("temp:Nonexistent", r, null));
-        // The CPU bar is scaled to the prime core's ceiling: 2707200/3187200.
+        // With no previous tick there is no utilisation, so the bar is scaled
+        // to the prime core's ceiling instead: 2707200/3187200.
         check("the CPU bar uses the discovered ceiling", 85,
               Telemetry.gaugePercent("cpu", r, null, l));
         check("the fan bar is duty out of 255", 38,
@@ -1215,6 +1252,79 @@ public final class TestMain {
               Telemetry.gaugePercent("gpu", r, null, l));
         // No honest ceiling for power - the draw depends on what is plugged in.
         check("power gets no bar", -1, Telemetry.gaugePercent("battery", r, null, l));
+
+        // --- CPU utilisation ----------------------------------------------------
+        // Only the "cpu" summary line. The per-core lines sit in the same file
+        // and start with the same three letters, so a startsWith("cpu") here
+        // would report whichever core was listed first as the whole chip.
+        long[] agg = Telemetry.parseCpuTimes("cpu  1000 0 500 8000 100 0 0 0 0 0");
+        check("the aggregate line totals the first eight fields", 9600L, agg[0]);
+        check("and idle is idle plus iowait", 8100L, agg[1]);
+        check("a per-core line is not the aggregate", null,
+              Telemetry.parseCpuTimes("cpu0 300 0 150 2000 30 0 0 0 0 0"));
+        check("cpu7 is not the aggregate either", null,
+              Telemetry.parseCpuTimes("cpu7 100 0 50 2100 20 0 0 0 0 0"));
+        check("another /proc/stat line is not it", null,
+              Telemetry.parseCpuTimes("ctxt 998877"));
+        check("intr is not it", null,
+              Telemetry.parseCpuTimes("intr 123456 1 2 3 4 5 6 7 8 9"));
+        check("a truncated line is refused", null, Telemetry.parseCpuTimes("cpu 1 2"));
+        check("null is refused", null, Telemetry.parseCpuTimes(null));
+        // guest and guest_nice are already counted inside user and nice, so
+        // including them would inflate the denominator and under-report load.
+        check("guest fields are excluded from the total", 9600L,
+              Telemetry.parseCpuTimes("cpu  1000 0 500 8000 100 0 0 0 999 999")[0]);
+        // The device's own line, 2026-11-04.
+        long[] real = Telemetry.parseCpuTimes("cpu  43672 6324 60509 3104486 2228 18973 3733 279 0 0");
+        check("the device's own aggregate line", 3240204L, real[0]);
+        check("and its idle", 3106714L, real[1]);
+
+        // 460 jiffies elapsed, 310 of them idle -> 150/460 = 33%.
+        check("utilisation is a delta of two snapshots", 33L,
+              Telemetry.cpuUtilPercent(9600L, 8100L, 10060L, 8410L));
+        check("a fully busy window is 100%", 100L,
+              Telemetry.cpuUtilPercent(1000L, 500L, 2000L, 500L));
+        check("a fully idle window is 0%", 0L,
+              Telemetry.cpuUtilPercent(1000L, 500L, 2000L, 1500L));
+        // An empty window means two ticks inside one jiffy, and counters going
+        // backwards means something is wrong. Neither is "idle".
+        check("an empty window is no reading", Telemetry.ABSENT,
+              Telemetry.cpuUtilPercent(1000L, 500L, 1000L, 500L));
+        check("counters going backwards is no reading", Telemetry.ABSENT,
+              Telemetry.cpuUtilPercent(2000L, 500L, 1000L, 400L));
+        check("idle exceeding total is no reading", Telemetry.ABSENT,
+              Telemetry.cpuUtilPercent(1000L, 500L, 1100L, 700L));
+        check("a missing snapshot is no reading", Telemetry.ABSENT,
+              Telemetry.cpuUtilPercent(Telemetry.ABSENT, 500L, 1100L, 600L));
+
+        // Threaded through parseTick, which is how the panel gets it.
+        Telemetry.Readings first = Telemetry.parseTick(tickOut, l, null);
+        String secondOut = tickOut.replace(
+              "/proc/stat:cpu  1100 0 550 8300 110 0 0 0 0 0",
+              "/proc/stat:cpu  1200 0 600 8600 120 0 0 0 0 0");
+        Telemetry.Readings second = Telemetry.parseTick(secondOut, l, first);
+        // 10060 -> 10520 is 460 elapsed; 8410 -> 8720 is 310 idle. Same 33%.
+        check("a second tick yields a utilisation", 33L, second.cpuUtilPct);
+
+        // --- the CPU row carries both numbers -----------------------------------
+        check("utilisation leads, clock follows", "33%  2.71 GHz",
+              Telemetry.formatCpuRow(33L, 2707200L));
+        // The first tick has no delta, so it shows the clock alone rather than
+        // an em dash sitting next to a real number.
+        check("the first tick shows the clock alone", "2.71 GHz",
+              Telemetry.formatCpuRow(Telemetry.ABSENT, 2707200L));
+        check("both absent is an em dash", Telemetry.NONE,
+              Telemetry.formatCpuRow(Telemetry.ABSENT, Telemetry.ABSENT));
+
+        check("the CPU gauge renders both", "33%  2.71 GHz",
+              Telemetry.gaugeValue("cpu", second, null));
+        // The bar means utilisation, so it reads against the GPU bar below it.
+        check("the CPU bar is utilisation once known", 33,
+              Telemetry.gaugePercent("cpu", second, null, l));
+        // And falls back to the clock against its ceiling on the first tick,
+        // rather than showing an empty bar for a second: 2707200/3187200.
+        check("the CPU bar falls back to the clock", 85,
+              Telemetry.gaugePercent("cpu", first, null, l));
 
         // --- when to tick -------------------------------------------------------
         check("tick on the telemetry tab while resumed", true, Telemetry.shouldPoll(true, true));
