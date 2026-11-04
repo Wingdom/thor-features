@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 385 host tests + 17 action tests, then packages
+./build.sh      runs 394 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -176,14 +176,26 @@ is the readings, which nobody presses a button in order to look at.
 
 ## What the telemetry tab can and cannot show
 
-| gauge | source |
+Four ring gauges over four bars, after the shape stock's own overlay used.
+The rings are what moves while a game runs; the bars are what you check
+rather than watch.
+
+| ring | shows | source |
+|---|---|---|
+| **CPU** | clock, with load on the line beneath | `/proc/stat` and `scaling_cur_freq` per cluster — three on this chip, not eight cores, showing the fastest |
+| **GPU** | load | `gpu_busy_percentage`. Utilisation, **not** clock; see below |
+| **PWR** | watts, signed | `current_now` × `voltage_now`, direction from `status` |
+| **RAM** | used of total | `/proc/meminfo`, the one reading that needs no root |
+
+| bar | shows |
 |---|---|
-| CPU | load **and** clock — `58%  2.71 GHz`. Load from `/proc/stat`, clock from `scaling_cur_freq` per cluster (three on this chip, not eight cores), showing the fastest |
-| GPU | load — `gpu_busy_percentage`. Utilisation, **not** clock; see below |
-| CPU / board / USB temperature | thermal zones, resolved by `type`, hottest of each group |
+| CPU temp / Board / USB | thermal zones, resolved by `type`, hottest of each group |
 | Fan | `pwm1` duty, and the thermal governor's cooling state |
-| Power | `current_now` × `voltage_now`, with the direction taken from `status` |
-| RAM | `/proc/meminfo`, the one reading that needs no root |
+
+Each metric keeps one colour, which is the one place the panel departs from
+Material You: a palette derived from the wallpaper would make four rings four
+shades of the same colour, and the point of these is to be told apart at a
+glance from the other screen.
 
 Readings refresh once a second, and only while the tab is actually in front.
 One tick is a single `grep` over 42 files and measures 25 ms on this device.
@@ -199,11 +211,18 @@ and none at any of the other eight, so a clock gauge would sit at a confident
 "680 MHz" forever whether the GPU was busy or asleep. Utilisation moves, so
 utilisation is what the row shows.
 
-**The CPU row carries two numbers**, on the pattern the Fan row already set
-(`38%  3/8`). Load answers "is it working hard" and lines up with the GPU row
-below it; the clock answers "is it being allowed to", which on a handheld is
-the one that tells you about throttling. Load is a delta between ticks, so the
-first tick after opening the tab shows the clock alone.
+**The CPU ring carries two numbers.** The large figure is always the clock and
+the small line is always the unit plus the load, so the gauge never changes
+meaning between ticks — including the first, where load is not computable yet
+because it is a delta. The clock answers "is it being allowed to work", which
+on a handheld is what tells you about throttling; the load answers "is it
+working hard", and is also what fills the ring, so CPU and GPU arcs can be
+read against each other.
+
+**The power ring's arc is scaled to 25 W**, which is a display convention and
+not a hardware limit — there is no honest ceiling for battery draw. The
+printed figure is exact; only the arc is approximate, and it saturates rather
+than misleading past full.
 
 **Battery direction** comes from `status` where that is decisive, and from the
 sign of `current_now` where it is not — "Not charging" is a long-running state

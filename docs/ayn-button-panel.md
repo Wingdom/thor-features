@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 385 tests
+feature on the host with no device and no root — that is how all 394 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -235,18 +235,53 @@ is not idle and leaves the *previous* file in place, so a stale dump reads as
 a confident wrong answer. Check the timestamp, or compare screenshot byte
 sizes, which differ clearly between the two tabs.
 
-### The tab strip moves between tabs
+### Four rings over four bars
 
-The panel is bottom-anchored and `WRAP_CONTENT`, and the Telemetry card is much
-shorter than the two Controls cards, so the window top moves — `[0,190]` on
-Controls, `[0,461]` on Telemetry. **Mode does not move**; it stays at
-`[52,785]-[1188,968]` on both, which is the property that matters. But the tab
-strip travels about 271px, so the tab you just tapped is not where its
-neighbour will be.
+The Telemetry tab is shaped after stock's own overlay: coloured ring gauges
+for the readings that move while a game runs — CPU, GPU, power, memory — over
+bars for the ones you check rather than watch, the three temperatures and fan
+duty. Two shapes rather than one is what makes the hierarchy readable at a
+glance; a circle is a headline number and a bar is a supporting one.
 
-The consequence for anyone scripting the panel: re-read the tab bounds after
-every switch. A tap at the old coordinates lands outside the window and
-`windowCloseOnTouchOutside` dismisses the panel instead.
+`RingGauge` is a plain custom `View`. It draws the arc and all three pieces of
+text in one pass against one set of bounds, which is the only way the text
+stays centred as the cell width changes — a circular `ProgressBar` is sized by
+its own bitmap and cannot carry text at all. It holds no logic: the caller
+hands it a label, the strings to print and a fraction, and the mapping from a
+reading to that fraction lives in `Telemetry` where it is host-tested.
+
+It also publishes its reading as a content description, which is not
+decoration. **Text drawn on a `Canvas` is invisible to `uiautomator dump`**,
+and that dump is how this panel gets verified on the device; without it a ring
+would be unreadable to the only tool that can check it.
+
+Each metric keeps one fixed colour. That is the single place this panel
+departs from Material You, deliberately: a palette derived from the wallpaper
+would give four rings four shades of one colour, and these exist to be told
+apart from the corner of an eye.
+
+**The power arc is scaled to a 25 W full scale**, which is a display
+convention and not a hardware limit — there is no honest ceiling for battery
+draw, and this device cannot even negotiate PD while adb holds the USB-C port.
+The printed figure stays exact and the arc saturates rather than misleading.
+
+### Why the Telemetry card has a minHeight
+
+The panel is bottom-anchored and `WRAP_CONTENT`, so a shorter tab makes the
+whole window shorter and the tab strip jumps. Before the card was given a
+minimum height the window top moved from `[0,190]` on Controls to `[0,461]` on
+Telemetry — the strip travelled 271px, so "Controls" was nowhere near where
+the finger had just tapped "Telemetry". Sizing the Telemetry tab to match the
+Controls tab brought that to **11px**, which is imperceptible.
+
+**Mode never moved either way.** It is anchored to the bottom and stays at
+`[52,785]-[1188,968]` on both tabs, which is the property that actually
+matters.
+
+One note for anyone scripting the panel anyway: if you change these heights so
+the tabs differ again, re-read the tab bounds after every switch. A tap at
+stale coordinates lands outside the window, and `windowCloseOnTouchOutside`
+dismisses the panel rather than switching tabs.
 
 ### The CPU row shows two numbers, and why not a tap
 

@@ -1205,53 +1205,86 @@ public final class TestMain {
         check("no temperature, no bar", -1, Telemetry.tempPercent(Telemetry.ABSENT));
 
         // --- which gauges ------------------------------------------------------
-        List<String> keys = Telemetry.gaugeKeys(l, false);
-        check("the gauges this device offers",
-              "[cpu, gpu, fan, temp:CPU, temp:Board, temp:USB, battery, ram]",
-              keys.toString());
-        check("eight rows, four per column", 4, Telemetry.leftColumnCount(keys.size()));
-        check("no FPS row until phase 2 proves it", false, keys.contains("fps"));
-        check("FPS leads when it works", "fps", Telemetry.gaugeKeys(l, true).get(0));
-        // A build where the GPU really is unreadable loses the row rather than
-        // showing a zero, which would look like an idle GPU.
+        check("the four rings", "[cpu, gpu, battery, ram]", Telemetry.ringKeys(l).toString());
+        check("the bars beneath", "[temp:CPU, temp:Board, temp:USB, fan]",
+              Telemetry.barKeys(l).toString());
+        // A build where the GPU really is unreadable loses its ring rather
+        // than drawing a zero, which would look like an idle GPU.
         Telemetry.Layout noGpu = Telemetry.parseDiscovery(
               DISCOVERY.replace("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage:0 %\n", ""));
-        check("no GPU row when its node is unreadable", false,
-              Telemetry.gaugeKeys(noGpu, false).contains("gpu"));
-        check("the odd row goes left", 4, Telemetry.leftColumnCount(7));
-        check("an even split is even", 4, Telemetry.leftColumnCount(8));
-        check("one gauge is one column", 1, Telemetry.leftColumnCount(1));
+        check("no GPU ring when its node is unreadable", "[cpu, battery, ram]",
+              Telemetry.ringKeys(noGpu).toString());
+        check("no fan bar without a fan", false,
+              Telemetry.barKeys(Telemetry.parseDiscovery("")).contains("fan"));
 
-        check("a temperature label", "CPU temp", Telemetry.gaugeLabel("temp:CPU"));
+        check("rings use short names", "PWR", Telemetry.ringLabel("battery"));
+        check("and the CPU keeps its own", "CPU", Telemetry.ringLabel("cpu"));
+        check("a temperature bar is labelled", "CPU temp", Telemetry.gaugeLabel("temp:CPU"));
         check("usb-therm keeps its own name", "USB", Telemetry.gaugeLabel("temp:USB"));
         check("xo-therm is labelled Board", "Board", Telemetry.gaugeLabel("temp:Board"));
-        check("the battery row is called Power", "Power", Telemetry.gaugeLabel("battery"));
 
-        check("a gauge renders its reading", "2.71 GHz", Telemetry.gaugeValue("cpu", r, null));
-        check("the CPU gauge shows the fastest cluster, not an average", "2.71 GHz",
-              Telemetry.formatCpuFreq(r.cpuMaxKhz()));
-        check("the GPU gauge renders a percentage", "4%",
-              Telemetry.gaugeValue("gpu", r, null));
-        check("the power gauge renders the device's own reading", "+0.98 W",
-              Telemetry.gaugeValue("battery", r, null));
-        check("the RAM gauge renders", "2.6 / 7.0 GiB", Telemetry.gaugeValue("ram", r, null));
-        check("a temperature gauge renders", "48\u00b0C",
-              Telemetry.gaugeValue("temp:CPU", r, null));
-        check("a gauge with no group reads absent", Telemetry.NONE,
-              Telemetry.gaugeValue("temp:Nonexistent", r, null));
-        // With no previous tick there is no utilisation, so the bar is scaled
-        // to the prime core's ceiling instead: 2707200/3187200.
-        check("the CPU bar uses the discovered ceiling", 85,
-              Telemetry.gaugePercent("cpu", r, null, l));
-        check("the fan bar is duty out of 255", 38,
-              Telemetry.gaugePercent("fan", r, null, l));
-        check("the RAM bar is used out of total", 37,
-              Telemetry.gaugePercent("ram", r, null, l));
-        // A utilisation is already a percentage, so its ceiling is simply 100.
-        check("the GPU bar is its utilisation", 4,
-              Telemetry.gaugePercent("gpu", r, null, l));
-        // No honest ceiling for power - the draw depends on what is plugged in.
-        check("power gets no bar", -1, Telemetry.gaugePercent("battery", r, null, l));
+        // --- what a ring prints ------------------------------------------------
+        // The large figure carries no unit and the small line underneath does,
+        // which is stock's own convention and what keeps four different kinds
+        // of reading looking like one instrument.
+        check("the CPU ring shows the clock, bare", "2.71", Telemetry.ringBig("cpu", r));
+        check("a sub-GHz clock stays in MHz", "864", Telemetry.cpuFreqValue(864000));
+        check("and says so", "MHz", Telemetry.cpuFreqUnit(864000));
+        check("a GHz clock says GHz", "GHz", Telemetry.cpuFreqUnit(2707200));
+        check("the GPU ring is a bare percentage", "4", Telemetry.ringBig("gpu", r));
+        check("the GPU ring's unit", "%", Telemetry.ringSub("gpu", r));
+        // One decimal, not the row's two: the figure sits inside a circle about
+        // 40dp across, where a fourth digit is smaller than it is useful. The
+        // row elsewhere still prints +0.98 W from the same reading.
+        check("the power ring rounds to one decimal", "+1.0",
+              Telemetry.ringBig("battery", r));
+        check("a bigger draw keeps its tenth", "\u22126.0",
+              Telemetry.wattsValue(-1415000L, 4273296L, "Not charging"));
+        check("the power ring's unit", "W", Telemetry.ringSub("battery", r));
+        check("the RAM ring shows what is used", "2.6", Telemetry.ringBig("ram", r));
+        check("and the total underneath", "/ 7.0 GB", Telemetry.ringSub("ram", r));
+
+        // Which figure is the clock and which is the load never swaps, so the
+        // gauge cannot change meaning between ticks - including the first,
+        // where the load is not computable yet.
+        check("the first tick's CPU ring is just the unit", "GHz",
+              Telemetry.ringSub("cpu", r));
+        check("the CPU ring gains the load once it exists", "GHz  33%",
+              Telemetry.ringSub("cpu", Telemetry.parseTick(
+                  tickOut.replace("/proc/stat:cpu  1100 0 550 8300 110 0 0 0 0 0",
+                                  "/proc/stat:cpu  1200 0 600 8600 120 0 0 0 0 0"),
+                  l, Telemetry.parseTick(tickOut, l, null))));
+
+        Telemetry.Readings none = Telemetry.parseTick("", l);
+        check("an unreadable ring prints an em dash", Telemetry.NONE,
+              Telemetry.ringBig("gpu", none));
+        check("so does the power ring", Telemetry.NONE, Telemetry.ringBig("battery", none));
+        check("and the RAM ring", Telemetry.NONE, Telemetry.ringBig("ram", none));
+
+        // --- how much of a ring is filled --------------------------------------
+        check("the GPU ring fills to its utilisation", 0.04f,
+              Telemetry.ringFraction("gpu", r, l));
+        check("the RAM ring fills to what is used", 0.37f,
+              Telemetry.ringFraction("ram", r, l));
+        // Power is the one reading with no ceiling, so its arc is scaled to a
+        // round full-scale and saturates there. The printed figure stays exact.
+        check("the power ring scales to its full scale", 25.0,
+              Telemetry.PWR_FULL_SCALE_W);
+        check("0.98 W of 25 fills a twenty-fifth", 0.039f,
+              Math.round(Telemetry.ringFraction("battery", r, l) * 1000) / 1000f);
+        Telemetry.Readings huge = Telemetry.parseTick(
+              tickOut.replace("/sys/class/power_supply/battery/current_now:229619",
+                              "/sys/class/power_supply/battery/current_now:9000000"), l);
+        check("a draw past full scale saturates rather than overflowing", 1.0f,
+              Telemetry.ringFraction("battery", huge, l));
+        check("no reading, no arc", -1.0f, Telemetry.ringFraction("battery", none, l));
+        check("an unreadable GPU has no arc", -1.0f, Telemetry.ringFraction("gpu", none, l));
+
+        // A ring and the bar it replaced must never disagree, so everything
+        // except power goes through the same gaugePercent.
+        check("the ring agrees with the percentage it came from",
+              Telemetry.gaugePercent("ram", r, null, l) / 100f,
+              Telemetry.ringFraction("ram", r, l));
 
         // --- CPU utilisation ----------------------------------------------------
         // Only the "cpu" summary line. The per-core lines sit in the same file
@@ -1316,7 +1349,7 @@ public final class TestMain {
         check("both absent is an em dash", Telemetry.NONE,
               Telemetry.formatCpuRow(Telemetry.ABSENT, Telemetry.ABSENT));
 
-        check("the CPU gauge renders both", "33%  2.71 GHz",
+        check("the CPU row still renders both for the bar API", "33%  2.71 GHz",
               Telemetry.gaugeValue("cpu", second, null));
         // The bar means utilisation, so it reads against the GPU bar below it.
         check("the CPU bar is utilisation once known", 33,
