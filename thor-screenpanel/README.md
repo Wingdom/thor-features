@@ -6,7 +6,7 @@ bottom screen.
 ![three options: Dual-screen display / Only top screen / Only bottom screen]
 
 ```
-./build.sh      runs 333 host tests + 17 action tests, then packages
+./build.sh      runs 349 host tests + 17 action tests, then packages
 ./install.sh    installs the APK and the AYN button action script
 ```
 
@@ -155,9 +155,10 @@ exist on this build — it reads `null` — so this drives
 so a renamed state breaks the build instead of silently invoking an argument
 the CLI no longer accepts.
 
-**Telemetry** — live readings on their own tab: CPU clock, the hottest CPU
-core, chassis and USB temperature, fan duty, battery power and memory in use.
-Everything there is a read; nothing on that tab writes to the device.
+**Telemetry** — live readings on their own tab: CPU clock, GPU load, the
+hottest CPU core, board and USB temperature, fan duty, battery power and
+memory in use. Everything there is a read; nothing on that tab writes to the
+device.
 
 **Mode** — the three screen modes, kept at the bottom, nearest the button.
 
@@ -178,21 +179,30 @@ is the readings, which nobody presses a button in order to look at.
 | gauge | source |
 |---|---|
 | CPU clock | `scaling_cur_freq`, per cluster — three on this chip, not eight cores |
-| CPU / chassis / USB temperature | thermal zones, resolved by `type` |
+| GPU load | `gpu_busy_percentage` — utilisation, **not** clock; see below |
+| CPU / board / USB temperature | thermal zones, resolved by `type`, hottest of each group |
 | Fan | `pwm1` duty, and the thermal governor's cooling state |
 | Power | `current_now` × `voltage_now`, with the direction taken from `status` |
 | RAM | `/proc/meminfo`, the one reading that needs no root |
+
+Readings refresh once a second, and only while the tab is actually in front.
+One tick is a single `grep` over 42 files and measures 25 ms on this device.
 
 **There is no fan RPM.** The fan is the kernel's `pwm-fan` driver, and on this
 build it exposes a duty node and nothing else — there is no tachometer
 anywhere in `/sys`, so no frame of reference beyond duty and cooling state.
 
-**GPU clock may be missing.** Its sysfs directory is unreadable on this build
-even with root, so the row appears only when a readable node is found. It is
-left out rather than shown as zero, because a GPU reading 0 MHz looks like an
-idle GPU rather than an absent one.
+**GPU load, not GPU clock.** The clock would be the obvious reading and it is
+the wrong one here: `devfreq/cur_freq` reports 680 MHz and never changes. Its
+own transition counters show all of the GPU's recorded time at that one step
+and none at any of the other eight, so a clock gauge would sit at a confident
+"680 MHz" forever whether the GPU was busy or asleep. Utilisation moves, so
+utilisation is what the row shows.
 
-Readings refresh once a second, and only while the tab is actually in front.
+**"Board", not "Skin".** This device has 60 thermal zones and not one of them
+is a skin sensor. The row reads `xo-therm`, a thermistor on the board — the
+closest thing available, and near enough to what the chassis feels to be
+useful, but it is not a skin measurement and is not labelled as one.
 
 ## Not yet
 

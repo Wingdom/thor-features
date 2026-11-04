@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 333 tests
+feature on the host with no device and no root — that is how all 349 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -162,6 +162,23 @@ files — the same forks-not-bytes lesson that took `screenblank status` from
 grep omits the filename prefix, and every line then parses as a value
 belonging to nothing.
 
+Measured on the device 2026-11-04, ten iterations each:
+
+| | per tick |
+|---|---|
+| two greps, `/proc/meminfo` filtered to two keys | 41 ms |
+| one grep, `/proc/meminfo` matched whole | 26 ms |
+| one grep, one file — the fork floor | 13 ms |
+
+So a fork costs 13 ms, and the 29 thermal sensors in that read cost about
+9 ms between them. Filtering meminfo was paying 15 ms to avoid carrying 48
+short lines, which is the wrong way round; the tick is now one grep. It also
+cost nothing to change, because the parser already collected every meminfo
+line and picked the two it wanted.
+
+The real generated command — 42 paths — measures **25 ms**, which at a
+one-second tick is 2.5% of one shell.
+
 **Discovery is lazy**, on the first tap of the tab rather than on panel open.
 Open cost is the number this file spends most of its length on; most opens
 never look at the gauges.
@@ -188,16 +205,71 @@ cooling device was 34 on one boot and 35 on another on this same build.
 Nothing in the telemetry code names an index: discovery reads every `type`
 file and derives the paths from whichever matched.
 
+### Ask the residency counter before trusting a node
+
+Two gauges here were nearly wrong in the same way, and the same read settled
+both. A sysfs node that returns a plausible number is not necessarily
+reporting anything: it may be handing back a ceiling, or a request, or a
+value nothing updates. The counters beside it say which.
+
+**The GPU clock is dead.** `devfreq/cur_freq` reads `680000000` and never
+moves. `trans_stat` is unambiguous — 2,693,080 ms accumulated at 680 MHz and
+exactly **0 ms at each of the other eight** available steps, three recorded
+transitions in the whole uptime — while `gpu_busy_percentage` over the same
+moments read 0–4%. So the GPU row is **utilisation**, not frequency. A clock
+gauge would have been a flat "680 MHz" that looked like a GPU at full tilt
+forever: always plausible, never right, which is the same failure as measuring
+the panel's own frame rate with a Choreographer.
+
+**The CPU clock is alive**, and it looks dead from the inside. Six consecutive
+samples returned byte-identical frequencies, because the `cat` doing the
+reading *is* the load — by the time the value comes back, the governor has
+ramped that cluster. `stats/time_in_state` proves the node fine: policy0 had
+visited 14 of its 16 states over 24,682 transitions, policy3 19 of 20,
+policy7 19 of 21. It moves; it just cannot be caught idle by an observer that
+wakes it.
+
+Same technique, opposite answers. That is the point: check the residency, not
+the value.
+
 ### What this hardware will not give you
 
-| | |
-|---|---|
-| **Fan RPM** | Does not exist. The fan is the kernel's `pwm-fan` driver bound at `pm8550@1/pwm-fan@0`, and `pwm1` is its only attribute — `find /sys -name 'fan*'` returns nothing outside the device tree. Upstream `pwm-fan` registers `fan1_input` only when the device tree gives it a tach interrupt, and this one does not. Duty and cooling state are the whole picture. |
-| **GPU clock** | `/sys/class/kgsl/` is `Permission denied` under SELinux despite uid 0. Several candidate paths are probed and the row appears only if one answers. |
+**Fan RPM does not exist.** The fan is the kernel's `pwm-fan` driver bound at
+`pm8550@1/pwm-fan@0`, and `pwm1` is its only attribute — `find /sys -name
+'fan*'` returns nothing outside the device tree, and there is only one hwmon.
+Upstream `pwm-fan` registers `fan1_input` only when the device tree gives it
+a tach interrupt, and this one does not. Duty and cooling state are the whole
+picture. Verified twice, the second time in the privileged SELinux context in
+case the first had been a denial in disguise.
 
-Both of these are reasons the gauge list is built from what discovery actually
-found rather than from a fixed list. A GPU row reading `0 MHz` would look like
-an idle GPU rather than an absent one.
+**No skin sensor either.** 60 thermal zones, and not one `skin` or
+`quiet-therm` among them. The board row reads `xo-therm` and is labelled
+"Board" rather than "Skin", because calling it skin would claim a measurement
+this hardware does not make.
+
+### A trap worth knowing: `su -c` is not the context the panel runs in
+
+`/sys/class/kgsl/` reads `Permission denied` under `adb shell su -c '<compound
+command>'`, and that is **not** what the panel experiences.
+
+```
+$ adb shell su -c 'cat /proc/self/attr/current'          -> u:r:magisk:s0
+$ adb shell su -c 'echo "$(cat /proc/self/attr/current)"' -> u:r:shell:s0
+```
+
+A command string that needs a shell gets one, and the magisk domain
+transitions to `shell` on exec'ing `shell_exec` — uid 0 either way, but that
+domain is denied kgsl. A single simple command execs its binary directly and
+stays privileged.
+
+`RootSession` feeds a persistent shell on **stdin** with no `-c` at all, and
+that shell stays in `u:r:magisk:s0` — including inside the `( ... )` subshell
+`RootProtocol.wrap` puts every command in, and including commands with
+redirections. So the panel reads kgsl fine.
+
+The moral is about probing, not about SELinux: a read that fails over `adb
+shell su -c` has not been shown to fail for the panel. Reproduce a denial
+through the same transport the code uses before believing it.
 
 ### Why `usb-therm` has its own row
 

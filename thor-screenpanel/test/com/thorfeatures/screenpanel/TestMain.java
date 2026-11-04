@@ -870,22 +870,30 @@ public final class TestMain {
     /**
      * A discovery reply shaped like this device's.
      *
-     * The values are the ones actually read off the Thor on 2026-11-03, not
-     * invented: three cpufreq policies rather than eight cores, the fan at
-     * cooling_device34, and hwmon0 exposing pwm1 and nothing else. The GPU
-     * candidates are absent from this fixture because every one of them
-     * answered "Permission denied" under SELinux despite uid 0 - which is the
-     * case the gauge list has to survive, so it is the default fixture rather
-     * than an edge case.
+     * Every name and number here was read off the Thor on 2026-11-04, not
+     * invented. The real device has 60 thermal zones; this keeps one of each
+     * kind that matters plus two decoys. Three cpufreq policies rather than
+     * eight cores, the fan at cooling_device34 (34 on this boot and on the
+     * one before, but recorded as 35 on another), and a readable GPU
+     * utilisation node.
+     *
+     * The decoys are the point of the ones that look redundant. {@code vbat}
+     * must not match the battery rule - it has one "t" - and a bare
+     * {@code usb} zone exists alongside {@code usb-therm} and must not be
+     * mistaken for it. Both are real zone types on this device.
      */
     private static final String DISCOVERY =
         "/sys/class/thermal/thermal_zone0/type:aoss-0\n"
-      + "/sys/class/thermal/thermal_zone1/type:cpu-0-0-usr\n"
-      + "/sys/class/thermal/thermal_zone2/type:cpu-1-0-usr\n"
-      + "/sys/class/thermal/thermal_zone3/type:gpuss-0-usr\n"
-      + "/sys/class/thermal/thermal_zone4/type:quiet-therm\n"
-      + "/sys/class/thermal/thermal_zone5/type:usb-therm\n"
-      + "/sys/class/thermal/thermal_zone6/type:sys-therm-batt\n"
+      + "/sys/class/thermal/thermal_zone1/type:cpuss-0\n"
+      + "/sys/class/thermal/thermal_zone2/type:cpu-0-0\n"
+      + "/sys/class/thermal/thermal_zone3/type:cpu-1-0\n"
+      + "/sys/class/thermal/thermal_zone4/type:gpuss-0\n"
+      + "/sys/class/thermal/thermal_zone5/type:gpuss-1\n"
+      + "/sys/class/thermal/thermal_zone6/type:xo-therm\n"
+      + "/sys/class/thermal/thermal_zone7/type:usb-therm\n"
+      + "/sys/class/thermal/thermal_zone8/type:battery\n"
+      + "/sys/class/thermal/thermal_zone9/type:vbat\n"
+      + "/sys/class/thermal/thermal_zone10/type:usb\n"
       + "/sys/class/thermal/cooling_device7/type:thermal-cpufreq-0\n"
       + "/sys/class/thermal/cooling_device34/type:pwm-fan\n"
       + "/sys/class/thermal/cooling_device40/type:thermal-devfreq-0\n"
@@ -894,7 +902,8 @@ public final class TestMain {
       + "/sys/devices/system/cpu/cpufreq/policy7/affected_cpus:7\n"
       + "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq:2016000\n"
       + "/sys/devices/system/cpu/cpufreq/policy3/cpuinfo_max_freq:2803200\n"
-      + "/sys/devices/system/cpu/cpufreq/policy7/cpuinfo_max_freq:3187200\n";
+      + "/sys/devices/system/cpu/cpufreq/policy7/cpuinfo_max_freq:3187200\n"
+      + "/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage:0 %\n";
 
     private static void telemetryTests() {
         System.out.println();
@@ -923,14 +932,26 @@ public final class TestMain {
         check("null is refused", false, Telemetry.isSafePath(null));
 
         // --- grouping thermal zones -----------------------------------------
-        check("cpu-0-0-usr is a CPU zone",   "CPU",     Telemetry.groupFor("cpu-0-0-usr"));
+        check("cpu-1-0 is a CPU zone",       "CPU",     Telemetry.groupFor("cpu-1-0"));
         check("cpuss-0 is a CPU zone",       "CPU",     Telemetry.groupFor("cpuss-0"));
-        check("gpuss-0-usr is a GPU zone",   "GPU",     Telemetry.groupFor("gpuss-0-usr"));
-        check("quiet-therm is the skin",     "Skin",    Telemetry.groupFor("quiet-therm"));
+        check("gpuss-0 is a GPU zone",       "GPU",     Telemetry.groupFor("gpuss-0"));
         check("usb-therm is its own gauge",  "USB",     Telemetry.groupFor("usb-therm"));
-        check("sys-therm-batt is battery",   "Battery", Telemetry.groupFor("sys-therm-batt"));
+        check("battery is the battery zone", "Battery", Telemetry.groupFor("battery"));
+        // This device has no skin sensor at all - 60 zones and not one of them
+        // is a skin or a quiet-therm. xo-therm is the board thermistor and the
+        // nearest thing to what the chassis feels, so the row is called Board
+        // rather than claiming a measurement the hardware does not make.
+        check("xo-therm is the board",       "Board",   Telemetry.groupFor("xo-therm"));
+        // Kept for a build that does have a real skin sensor, which would be
+        // the better reading of the two.
+        check("a real skin sensor would win","Board",   Telemetry.groupFor("quiet-therm"));
         check("aoss-0 is not shown",         null,      Telemetry.groupFor("aoss-0"));
         check("null type is not shown",      null,      Telemetry.groupFor(null));
+        // Two real zone types on this device that must not be swept up by the
+        // broader rules: "vbat" has one t, and a bare "usb" is not usb-therm.
+        check("vbat is not the battery",     null,      Telemetry.groupFor("vbat"));
+        check("a bare usb zone is not usb-therm", null, Telemetry.groupFor("usb"));
+        check("ddr is not shown",            null,      Telemetry.groupFor("ddr"));
 
         // --- discovery -------------------------------------------------------
         // -H must be explicit. Without it, a glob matching exactly one file
@@ -939,7 +960,7 @@ public final class TestMain {
         check("discovery forces the filename prefix", true,
               Telemetry.discoverCommand().contains("grep -H "));
         check("discovery probes the GPU candidates", true,
-              Telemetry.discoverCommand().contains(Telemetry.GPU_FREQ_CANDIDATES[0]));
+              Telemetry.discoverCommand().contains(Telemetry.GPU_BUSY_CANDIDATES[0]));
 
         Telemetry.Layout l = Telemetry.parseDiscovery(DISCOVERY);
         check("three policies, not eight cores", 3, l.policies.size());
@@ -967,12 +988,18 @@ public final class TestMain {
         check("a cooling device after the fan is ignored", true,
               !l.fanStatePath.contains("cooling_device40"));
 
-        check("two CPU zones were grouped", 2, l.zones.get("CPU").size());
-        check("the GPU zone was grouped", 1, l.zones.get("GPU").size());
-        check("gauges are ordered, not zone-ordered", "[CPU, GPU, Skin, USB, Battery]",
+        check("three CPU zones were grouped", 3, l.zones.get("CPU").size());
+        check("two GPU zones were grouped", 2, l.zones.get("GPU").size());
+        check("gauges are ordered, not zone-ordered", "[CPU, GPU, Board, USB, Battery]",
               l.zones.keySet().toString());
-        // Every GPU frequency candidate was denied on this build.
-        check("no GPU frequency node was readable", false, l.hasGpuFreq());
+        check("the decoy zones were dropped", 5, l.zones.size());
+        // Readable through the panel's transport. It is NOT readable through
+        // `adb shell su -c '<compound string>'`, which lands in u:r:shell:s0
+        // and is refused - but RootSession feeds a persistent shell on stdin
+        // and stays in u:r:magisk:s0. Verified on device 2026-11-04.
+        check("the GPU utilisation node was readable", true, l.hasGpu());
+        check("and it is the preferred candidate",
+              "/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage", l.gpuBusyPath);
         check("a layout with sensors is not empty", false, l.isEmpty());
         check("root refused means an empty layout", true,
               Telemetry.parseDiscovery("").isEmpty());
@@ -985,14 +1012,15 @@ public final class TestMain {
               tickCmd.contains("/sys/class/hwmon/hwmon0/pwm1"));
         check("the tick reads battery current", true,
               tickCmd.contains("/sys/class/power_supply/battery/current_now"));
-        check("the tick narrows meminfo rather than dumping it", true,
-              tickCmd.contains("^(MemTotal|MemAvailable):"));
-        // One exchange over the session, two forks. The session wraps the whole
-        // string in one subshell, so a semicolon costs no extra round trip.
-        check("meminfo shares one exchange", 1,
+        check("the tick reads meminfo", true, tickCmd.contains("/proc/meminfo"));
+        check("the tick reads the GPU", true, tickCmd.contains("gpu_busy_percentage"));
+        // One fork, not two. Measured on device: two greps 41 ms, one grep
+        // 26 ms, and a bare one-file grep 13 ms - so a fork costs 13 ms and
+        // filtering meminfo was paying 15 ms to avoid 48 short lines.
+        check("the whole tick is a single grep", 1,
+              tickCmd.split("grep", -1).length - 1);
+        check("and a single command, with no second statement", 0,
               tickCmd.split(";", -1).length - 1);
-        check("the tick asks for no GPU node it cannot read", false,
-              tickCmd.contains("kgsl"));
 
         // The same invariant the rest of the panel's commands have. Device-read
         // directory names reach this string, so it is the one place that could
@@ -1007,25 +1035,36 @@ public final class TestMain {
         check("an unsafe discovered path is dropped", 0, poisoned.zones.size());
 
         // --- parsing a tick --------------------------------------------------
+        // Battery, memory and the three slow sensors are the device's real
+        // 2026-11-04 readings; the CPU and GPU zone temperatures are synthetic
+        // so the "hottest of the group" assertions have a fixed answer.
+        //
+        // The meminfo lines are the whole file as the single grep now returns
+        // it, not a filtered pair - including keys the parser must ignore.
         String tickOut =
             "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq:2016000\n"
           + "/sys/devices/system/cpu/cpufreq/policy3/scaling_cur_freq:2707200\n"
           + "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq:864000\n"
           + "/sys/class/thermal/thermal_zone1/temp:42000\n"
           + "/sys/class/thermal/thermal_zone2/temp:47500\n"
-          + "/sys/class/thermal/thermal_zone3/temp:39000\n"
-          + "/sys/class/thermal/thermal_zone4/temp:35000\n"
+          + "/sys/class/thermal/thermal_zone3/temp:45000\n"
+          + "/sys/class/thermal/thermal_zone4/temp:39000\n"
           + "/sys/class/thermal/thermal_zone5/temp:41000\n"
-          + "/sys/class/thermal/thermal_zone6/temp:33000\n"
+          + "/sys/class/thermal/thermal_zone6/temp:34475\n"
+          + "/sys/class/thermal/thermal_zone7/temp:34595\n"
+          + "/sys/class/thermal/thermal_zone8/temp:26000\n"
           + "/sys/class/hwmon/hwmon0/pwm1:96\n"
           + "/sys/class/thermal/cooling_device34/cur_state:3\n"
           + "/sys/class/thermal/cooling_device34/max_state:8\n"
-          + "/sys/class/power_supply/battery/current_now:-1250000\n"
-          + "/sys/class/power_supply/battery/voltage_now:3912000\n"
-          + "/sys/class/power_supply/battery/status:Discharging\n"
-          + "/sys/class/power_supply/battery/capacity:74\n"
-          + "/proc/meminfo:MemTotal:       16303292 kB\n"
-          + "/proc/meminfo:MemAvailable:    9804112 kB\n";
+          + "/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage:4 %\n"
+          + "/sys/class/power_supply/battery/current_now:229619\n"
+          + "/sys/class/power_supply/battery/voltage_now:4282249\n"
+          + "/sys/class/power_supply/battery/status:Charging\n"
+          + "/sys/class/power_supply/battery/capacity:83\n"
+          + "/proc/meminfo:MemTotal:        7372144 kB\n"
+          + "/proc/meminfo:MemFree:          312884 kB\n"
+          + "/proc/meminfo:MemAvailable:    4679920 kB\n"
+          + "/proc/meminfo:Buffers:          48216 kB\n";
 
         Telemetry.Readings r = Telemetry.parseTick(tickOut, l);
         check("three cluster frequencies", 3, r.cpuKhz.size());
@@ -1034,24 +1073,29 @@ public final class TestMain {
         check("the CPU gauge takes the fastest cluster", 2707200L, r.cpuMaxKhz());
         // Of two CPU zones at 42.0 and 47.5, the hotter is the one that matters.
         check("a zone group reports its hottest", 47500L, (long) r.tempMilliC.get("CPU"));
-        check("the skin zone was read", 35000L, (long) r.tempMilliC.get("Skin"));
+        check("the board zone was read", 34475L, (long) r.tempMilliC.get("Board"));
+        check("the usb zone was read", 34595L, (long) r.tempMilliC.get("USB"));
         check("fan duty was read", 96L, r.fanPwm);
         check("fan state was read", 3L, r.fanState);
-        check("battery status is a word, not a sign", "Discharging", r.batStatus);
-        check("meminfo total survived its second colon", 16303292L, r.memTotalKb);
-        check("meminfo available survived too", 9804112L, r.memAvailKb);
-        check("an absent GPU stays absent", Telemetry.ABSENT, r.gpuHz);
+        check("GPU utilisation was read", 4L, r.gpuBusyPct);
+        check("battery status is a word, not a sign", "Charging", r.batStatus);
+        check("meminfo total survived its second colon", 7372144L, r.memTotalKb);
+        check("meminfo available survived too", 4679920L, r.memAvailKb);
+        // The single grep returns the whole file; the keys we do not want must
+        // fall through rather than land in a gauge.
+        check("an unwanted meminfo key is ignored", 4679920L, r.memAvailKb);
 
         Telemetry.Readings empty = Telemetry.parseTick("", l);
         check("an empty reply yields no CPU reading", Telemetry.ABSENT, empty.cpuMaxKhz());
         check("an empty reply yields no fan reading", Telemetry.ABSENT, empty.fanPwm);
         check("an empty reply still lists the zone groups", 5, empty.tempMilliC.size());
+        check("an empty reply yields no GPU reading", Telemetry.ABSENT, empty.gpuBusyPct);
         check("an empty reply's zone reads absent", Telemetry.ABSENT,
               (long) empty.tempMilliC.get("CPU"));
 
         // A line for a path the layout never asked for cannot land in a gauge.
         Telemetry.Readings spoofed = Telemetry.parseTick(
-              "/sys/class/thermal/thermal_zone99/temp:99000\n", l);
+              "/sys/class/thermal/thermal_zone42/temp:99000\n", l);
         check("an unrequested path is ignored", Telemetry.ABSENT,
               (long) spoofed.tempMilliC.get("CPU"));
 
@@ -1073,10 +1117,13 @@ public final class TestMain {
         check("cpu freq in GHz",  "2.02 GHz", Telemetry.formatCpuFreq(2016000));
         check("cpu freq in MHz",  "864 MHz",  Telemetry.formatCpuFreq(864000));
         check("cpu freq absent",  Telemetry.NONE, Telemetry.formatCpuFreq(Telemetry.ABSENT));
-        // devfreq reports Hz where cpufreq reports kHz - a thousand-fold
-        // difference between two nodes that look alike.
-        check("gpu freq is Hz, not kHz", "680 MHz", Telemetry.formatGpuFreq(680000000L));
-        check("gpu freq absent", Telemetry.NONE, Telemetry.formatGpuFreq(Telemetry.ABSENT));
+        // The GPU is a utilisation, not a frequency: its frequency node on this
+        // device reads 680000000 and never moves - trans_stat shows 2,693,080
+        // ms at that step and 0 ms at each of the other eight.
+        check("gpu utilisation", "4%", Telemetry.formatPercent(4));
+        check("gpu utilisation clamps", "100%", Telemetry.formatPercent(140));
+        check("gpu utilisation absent", Telemetry.NONE,
+              Telemetry.formatPercent(Telemetry.ABSENT));
         check("temperature rounds to a degree", "48\u00b0C", Telemetry.formatTemp(47500));
         check("temperature absent", Telemetry.NONE, Telemetry.formatTemp(Telemetry.ABSENT));
 
@@ -1087,20 +1134,27 @@ public final class TestMain {
         check("fan absent", Telemetry.NONE,
               Telemetry.formatFan(Telemetry.ABSENT, Telemetry.ABSENT, Telemetry.ABSENT));
 
-        // 1.25 A at 3.912 V = 4.89 W. The sign comes from status, never from
-        // the sign of current_now, whose convention on this device is unverified.
-        check("watts from current and voltage", "\u22124.89 W",
-              Telemetry.formatWatts(-1250000L, 3912000L, "Discharging"));
-        check("charging is positive regardless of the current's sign", "+4.89 W",
-              Telemetry.formatWatts(-1250000L, 3912000L, "Charging"));
+        // The device's real reading on 2026-11-04: 0.2296 A at 4.282 V, which
+        // is 0.98 W - a trickle, because the battery was at 83% in CV taper
+        // and no PD can be negotiated while adb occupies the USB-C port.
+        check("watts from the device's own reading", "+0.98 W",
+              Telemetry.formatWatts(229619L, 4282249L, "Charging"));
+        // Observed convention on THIS device: current_now is positive while
+        // charging. The sign is still taken from status rather than from the
+        // number, because Qualcomm builds disagree and a gauge that reads
+        // "+4 W" while the battery drains is worse than no gauge.
         check("a positive current discharging is still negative", "\u22124.89 W",
               Telemetry.formatWatts(1250000L, 3912000L, "Discharging"));
+        check("a negative current charging is still positive", "+4.89 W",
+              Telemetry.formatWatts(-1250000L, 3912000L, "Charging"));
         check("an unknown status gets no sign", "4.89 W",
               Telemetry.formatWatts(1250000L, 3912000L, "Not charging"));
         check("watts absent", Telemetry.NONE,
               Telemetry.formatWatts(Telemetry.ABSENT, 3912000L, "Discharging"));
 
-        check("ram used of total", "6.2 / 15.5 GiB", Telemetry.formatRam(16303292L, 9804112L));
+        // 7372144 kB is 7.03 GiB - this is an 8 GB device, not the 16 GB the
+        // first version of this fixture guessed at.
+        check("ram used of total", "2.6 / 7.0 GiB", Telemetry.formatRam(7372144L, 4679920L));
         check("ram absent", Telemetry.NONE, Telemetry.formatRam(Telemetry.ABSENT, 1L));
 
         // --- bars --------------------------------------------------------------
@@ -1118,20 +1172,33 @@ public final class TestMain {
 
         // --- which gauges ------------------------------------------------------
         List<String> keys = Telemetry.gaugeKeys(l, false);
-        check("no GPU row when its node is unreadable", false, keys.contains("gpu"));
         check("the gauges this device offers",
-              "[cpu, fan, temp:CPU, temp:Skin, temp:USB, battery, ram]", keys.toString());
+              "[cpu, gpu, fan, temp:CPU, temp:Board, temp:USB, battery, ram]",
+              keys.toString());
+        check("eight rows, four per column", 4, Telemetry.leftColumnCount(keys.size()));
         check("no FPS row until phase 2 proves it", false, keys.contains("fps"));
         check("FPS leads when it works", "fps", Telemetry.gaugeKeys(l, true).get(0));
+        // A build where the GPU really is unreadable loses the row rather than
+        // showing a zero, which would look like an idle GPU.
+        Telemetry.Layout noGpu = Telemetry.parseDiscovery(
+              DISCOVERY.replace("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage:0 %\n", ""));
+        check("no GPU row when its node is unreadable", false,
+              Telemetry.gaugeKeys(noGpu, false).contains("gpu"));
         check("the odd row goes left", 4, Telemetry.leftColumnCount(7));
         check("an even split is even", 4, Telemetry.leftColumnCount(8));
         check("one gauge is one column", 1, Telemetry.leftColumnCount(1));
 
         check("a temperature label", "CPU temp", Telemetry.gaugeLabel("temp:CPU"));
         check("usb-therm keeps its own name", "USB", Telemetry.gaugeLabel("temp:USB"));
+        check("xo-therm is labelled Board", "Board", Telemetry.gaugeLabel("temp:Board"));
         check("the battery row is called Power", "Power", Telemetry.gaugeLabel("battery"));
 
         check("a gauge renders its reading", "2.71 GHz", Telemetry.gaugeValue("cpu", r, null));
+        check("the GPU gauge renders a percentage", "4%",
+              Telemetry.gaugeValue("gpu", r, null));
+        check("the power gauge renders the device's own reading", "+0.98 W",
+              Telemetry.gaugeValue("battery", r, null));
+        check("the RAM gauge renders", "2.6 / 7.0 GiB", Telemetry.gaugeValue("ram", r, null));
         check("a temperature gauge renders", "48\u00b0C",
               Telemetry.gaugeValue("temp:CPU", r, null));
         check("a gauge with no group reads absent", Telemetry.NONE,
@@ -1141,11 +1208,13 @@ public final class TestMain {
               Telemetry.gaugePercent("cpu", r, null, l));
         check("the fan bar is duty out of 255", 38,
               Telemetry.gaugePercent("fan", r, null, l));
-        check("the RAM bar is used out of total", 40,
+        check("the RAM bar is used out of total", 37,
               Telemetry.gaugePercent("ram", r, null, l));
-        // No reachable maximum, so no bar rather than a bar against a guess.
+        // A utilisation is already a percentage, so its ceiling is simply 100.
+        check("the GPU bar is its utilisation", 4,
+              Telemetry.gaugePercent("gpu", r, null, l));
+        // No honest ceiling for power - the draw depends on what is plugged in.
         check("power gets no bar", -1, Telemetry.gaugePercent("battery", r, null, l));
-        check("gpu gets no bar", -1, Telemetry.gaugePercent("gpu", r, null, l));
 
         // --- when to tick -------------------------------------------------------
         check("tick on the telemetry tab while resumed", true, Telemetry.shouldPoll(true, true));
