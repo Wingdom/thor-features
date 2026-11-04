@@ -375,6 +375,11 @@ public final class Telemetry {
         paths.add(BATTERY + "/status");
         paths.add(BATTERY + "/capacity");
         paths.add("/proc/meminfo");
+        // /proc/stat for CPU utilisation. It joins the same grep rather than
+        // getting a filtered one of its own: on this device the whole file is
+        // 1417 bytes over 16 lines, longest line 851 chars, so carrying it
+        // whole costs nothing measurable where a second fork costs 13 ms.
+        paths.add("/proc/stat");
 
         StringBuilder sb = new StringBuilder("grep -H . ");
         for (String p : paths) {
@@ -404,6 +409,18 @@ public final class Telemetry {
         public String batStatus;
         public long memTotalKb = ABSENT;
         public long memAvailKb = ABSENT;
+        /** Raw jiffy counters, kept so the next tick can take a delta. */
+        public long cpuTotalJiffies = ABSENT;
+        public long cpuIdleJiffies = ABSENT;
+        /**
+         * CPU utilisation 0-100, or {@link #ABSENT} on the first tick.
+         *
+         * Absent rather than zero on the first tick, and the distinction
+         * matters: a utilisation is a rate, so it does not exist until there
+         * are two samples to subtract. Showing 0% would claim an idle CPU at
+         * exactly the moment the panel has no idea.
+         */
+        public long cpuUtilPct = ABSENT;
 
         /**
          * The fastest cluster right now, which is what a CPU gauge means.
@@ -431,17 +448,28 @@ public final class Telemetry {
         }
     }
 
+    /** As {@link #parseTick(String, Layout, Readings)} with no previous tick. */
+    public static Readings parseTick(String out, Layout layout) {
+        return parseTick(out, layout, null);
+    }
+
     /**
      * Parse a tick reply.
      *
      * Values are matched against the paths {@code layout} asked for rather
      * than pattern-matched out of the text, so a line this code did not
      * request cannot land in a gauge.
+     *
+     * @param previous the preceding tick's readings, or null on the first.
+     *                 CPU utilisation is a delta of jiffy counters and cannot
+     *                 be computed from one sample, so it is the one reading
+     *                 that depends on history.
      */
-    public static Readings parseTick(String out, Layout layout) {
+    public static Readings parseTick(String out, Layout layout, Readings previous) {
         Readings r = new Readings();
         Map<String, String> got = new LinkedHashMap<>();
         List<String> meminfo = new ArrayList<>();
+        List<String> procStat = new ArrayList<>();
 
         if (out != null) {
             for (String raw : out.split("\n")) {
@@ -451,6 +479,7 @@ public final class Telemetry {
                 String path  = line.substring(0, i);
                 String value = line.substring(i + 1).trim();
                 if (path.equals("/proc/meminfo")) meminfo.add(value);
+                else if (path.equals("/proc/stat")) procStat.add(value);
                 else got.put(path, value);
             }
         }
@@ -487,7 +516,71 @@ public final class Telemetry {
             if (key.equals("MemTotal"))          r.memTotalKb = parseLong(val);
             else if (key.equals("MemAvailable")) r.memAvailKb = parseLong(val);
         }
+
+        for (String line : procStat) {
+            long[] t = parseCpuTimes(line);
+            if (t == null) continue;
+            r.cpuTotalJiffies = t[0];
+            r.cpuIdleJiffies  = t[1];
+            break;
+        }
+        if (previous != null) {
+            r.cpuUtilPct = cpuUtilPercent(
+                    previous.cpuTotalJiffies, previous.cpuIdleJiffies,
+                    r.cpuTotalJiffies, r.cpuIdleJiffies);
+        }
         return r;
+    }
+
+    /**
+     * Total and idle jiffies out of {@code /proc/stat}'s aggregate line, or
+     * null if this is not that line.
+     *
+     * Only the {@code cpu} summary line, never {@code cpu0}..{@code cpu7}.
+     * The per-core lines are in the same file and start with the same three
+     * letters, so the match is on the whole first token - a {@code
+     * startsWith("cpu")} here would take whichever core happened to be listed
+     * first and report one core's load as the whole chip's.
+     *
+     * Fields after the label are user, nice, system, idle, iowait, irq,
+     * softirq, steal, guest, guest_nice. Total sums the first eight; guest and
+     * guest_nice are already counted inside user and nice, so adding them
+     * would inflate the denominator. Idle counts iowait as idle, because a CPU
+     * waiting on storage is not doing work the user can see.
+     */
+    static long[] parseCpuTimes(String line) {
+        if (line == null) return null;
+        String[] f = line.trim().split("\\s+");
+        if (f.length < 5 || !f[0].equals("cpu")) return null;
+        long total = 0;
+        for (int i = 1; i < f.length && i <= 8; i++) {
+            long v = parseLong(f[i]);
+            if (v == ABSENT) return null;
+            total += v;
+        }
+        long idle = parseLong(f[4]);                       // idle
+        long iowait = f.length > 5 ? parseLong(f[5]) : 0;  // iowait
+        if (idle == ABSENT) return null;
+        if (iowait == ABSENT) iowait = 0;
+        return new long[] { total, idle + iowait };
+    }
+
+    /**
+     * Utilisation between two jiffy snapshots, 0-100, or {@link #ABSENT}.
+     *
+     * Returns ABSENT rather than 0 when the window is empty or the counters
+     * went backwards. An empty window happens if two ticks land inside the
+     * same jiffy, and counters go backwards only if something has gone wrong -
+     * either way the honest answer is "no reading", not "idle".
+     */
+    static long cpuUtilPercent(long prevTotal, long prevIdle, long curTotal, long curIdle) {
+        if (prevTotal == ABSENT || prevIdle == ABSENT
+                || curTotal == ABSENT || curIdle == ABSENT) return ABSENT;
+        long dTotal = curTotal - prevTotal;
+        long dIdle  = curIdle - prevIdle;
+        if (dTotal <= 0 || dIdle < 0 || dIdle > dTotal) return ABSENT;
+        long pct = Math.round((dTotal - dIdle) * 100.0 / dTotal);
+        return Math.max(0, Math.min(100, pct));
     }
 
     static long parseLong(String s) {
@@ -543,6 +636,32 @@ public final class Telemetry {
         return Math.min(pct, 100) + "%";
     }
 
+    /**
+     * The CPU row: utilisation and clock together, "58%  2.71 GHz".
+     *
+     * Both, in one row, on the pattern the Fan row already set ("38%  3/8").
+     * The alternative considered was a tap that toggled between them, and it
+     * was rejected: it hides half the reading behind a gesture nothing
+     * advertises, it would leave the CPU row tappable while the GPU row next
+     * to it cannot be (there is no live GPU clock to toggle to), and the gauge
+     * rows are deliberately styled as readings rather than controls - a 6dp
+     * bar against the brightness slider's 40dp - so making one of them
+     * respond to touch argues with the thing the styling is there to say.
+     *
+     * Utilisation leads because it is the number that answers "is it working
+     * hard", and because it lines up with the GPU row directly beneath. The
+     * clock follows because on a handheld it is the number that says whether
+     * the chip is being allowed to.
+     *
+     * On the first tick there is no utilisation yet - it is a delta - so the
+     * row shows the clock alone rather than an em dash beside it.
+     */
+    public static String formatCpuRow(long utilPct, long khz) {
+        String clock = formatCpuFreq(khz);
+        if (utilPct == ABSENT) return clock;
+        return formatPercent(utilPct) + "  " + clock;
+    }
+
     /** Temperature: milli-degrees in, "45 C" out. */
     public static String formatTemp(long milliC) {
         if (milliC == ABSENT) return NONE;
@@ -575,24 +694,38 @@ public final class Telemetry {
     }
 
     /**
-     * Battery power: microamps and microvolts in, "4.52 W" out.
+     * Battery power: microamps and microvolts in, "+4.52 W" out.
      *
-     * The sign comes from {@code status}, never from the sign of {@code
-     * current_now}. Qualcomm builds disagree about which direction is
-     * negative, and the node's convention on this device is unverified, so
-     * reading direction out of the magnitude would be a guess that renders as
-     * a confident number. {@code status} says "Charging" or "Discharging" in
-     * words and cannot be misread.
+     * <h4>Direction: {@code status} first, then the current's own sign</h4>
+     *
+     * {@code status} is preferred because it says "Charging" or "Discharging"
+     * in words and cannot be misread. But it is frequently neither: on this
+     * device, plugged in at 85%, it sits at <b>"Not charging"</b> for long
+     * stretches while the charger holds. Taking the sign from {@code status}
+     * alone therefore left a common case rendering as a bare "6.05 W" with no
+     * direction at all - observed 2026-11-04, and worse than being wrong,
+     * because the user cannot tell which way 6 W is going.
+     *
+     * So an undecided {@code status} falls through to the sign of {@code
+     * current_now}, and both directions of that register have now been
+     * observed on this device. Charging read {@code +229619}. Then, under a
+     * CPU load with the charger holding at 85% and {@code status} still
+     * saying "Not charging", it read negative at 6.05 W - the battery
+     * supplementing a charger that was supplying less than the load wanted.
+     * Positive is into the battery, negative is out of it, confirmed from
+     * both sides rather than assumed from one.
+     *
+     * Zero current gets no sign, and needs none: "0.00 W" is unambiguous.
      */
     public static String formatWatts(long uA, long uV, String status) {
         if (uA == ABSENT || uV == ABSENT) return NONE;
         double w = Math.abs(uA / 1e6) * (uV / 1e6);
         String sign = "";
-        if (status != null) {
-            String s = status.trim().toLowerCase(Locale.ROOT);
-            if (s.startsWith("charging")) sign = "+";
-            else if (s.startsWith("discharging")) sign = "−";  // true minus
-        }
+        String s = status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
+        if (s.startsWith("charging"))         sign = "+";
+        else if (s.startsWith("discharging")) sign = "−";   // true minus
+        else if (uA > 0)                      sign = "+";
+        else if (uA < 0)                      sign = "−";
         return String.format(Locale.ROOT, "%s%.2f W", sign, w);
     }
 
@@ -710,7 +843,7 @@ public final class Telemetry {
         }
         switch (key) {
             case "fps":     return Fps.format(fps);
-            case "cpu":     return formatCpuFreq(r.cpuMaxKhz());
+            case "cpu":     return formatCpuRow(r.cpuUtilPct, r.cpuMaxKhz());
             case "gpu":     return formatPercent(r.gpuBusyPct);
             case "fan":     return formatFan(r.fanPwm, r.fanState, r.fanMaxState);
             case "battery": return formatWatts(r.batCurrentUa, r.batVoltageUv, r.batStatus);
@@ -737,7 +870,13 @@ public final class Telemetry {
         }
         switch (key) {
             case "fps":     return Fps.percent(fps);
-            case "cpu":     return percent(r.cpuMaxKhz(), l == null ? ABSENT : l.cpuMaxKhzCeiling);
+            // Utilisation when there is one, so this bar and the GPU's below
+            // it mean the same thing and can be read against each other. The
+            // clock against its ceiling is the fallback for the first tick,
+            // which has no delta yet - better than an empty bar for a second.
+            case "cpu":     return r.cpuUtilPct != ABSENT
+                                   ? percent(r.cpuUtilPct, 100)
+                                   : percent(r.cpuMaxKhz(), l == null ? ABSENT : l.cpuMaxKhzCeiling);
             case "gpu":     return percent(r.gpuBusyPct, 100);
             case "fan":     return percent(r.fanPwm, 255);
             case "ram":     return (r.memTotalKb == ABSENT || r.memAvailKb == ABSENT)

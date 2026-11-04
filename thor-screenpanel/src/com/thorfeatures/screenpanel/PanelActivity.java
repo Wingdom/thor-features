@@ -454,6 +454,16 @@ public final class PanelActivity extends Activity {
     private String fpsLayer;
     private boolean fpsAvailable;
 
+    /**
+     * The previous tick's readings, kept only so CPU utilisation has a delta.
+     *
+     * Cleared when polling stops, so a tab reopened after a gap computes its
+     * first utilisation from two adjacent ticks rather than across the pause -
+     * a delta spanning a minute of being closed would average the whole gap
+     * and report it as the current load.
+     */
+    private Telemetry.Readings previousTick;
+
     private void bindTabs() {
         findViewById(R.id.tab_controls).setOnClickListener(v -> selectTab(false));
         findViewById(R.id.tab_telemetry).setOnClickListener(v -> selectTab(true));
@@ -489,6 +499,7 @@ public final class PanelActivity extends Activity {
         polling = want;
         if (!want) {
             ui.removeCallbacks(tick);
+            previousTick = null;
             return;
         }
         if (telemetryLayout == null) discoverTelemetry();
@@ -527,9 +538,11 @@ public final class PanelActivity extends Activity {
             if (!polling || l == null) return;
             io.execute(() -> {
                 RootClient.Result r = root.run(Telemetry.tickCommand(l));
-                final Telemetry.Readings readings = Telemetry.parseTick(r.out, l);
+                final Telemetry.Readings readings =
+                        Telemetry.parseTick(r.out, l, previousTick);
                 final Fps.Sample fps = sampleFps();
                 ui.post(() -> {
+                    previousTick = readings;
                     renderGauges(l, readings, fps);
                     if (polling) ui.postDelayed(tick, Telemetry.TICK_MS);
                 });
