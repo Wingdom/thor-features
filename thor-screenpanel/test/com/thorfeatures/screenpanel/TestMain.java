@@ -1337,8 +1337,26 @@ public final class TestMain {
         // Absent far more often than not - it needs a focused app on the top
         // screen that is actually drawing - so it earns its slot by being
         // there rather than holding one that reads blank.
-        check("no FPS ring until something is drawing", false,
+        // The ring is gated on whether this build CAN measure, not on whether
+        // something is drawing this instant. Gating on the reading made the
+        // ring vanish whenever the top screen was idle, which is
+        // indistinguishable from the feature being broken.
+        check("no FPS ring on a build that cannot measure", false,
               Telemetry.ringKeys(l, false).contains("fps"));
+        check("the ring stays when the build can measure", true,
+              Telemetry.ringKeys(l, true).contains("fps"));
+        // And when it has no number it says which kind of nothing that is.
+        check("an idle top screen says so", "no frames",
+              Telemetry.ringSub("fps", r, Fps.NO_SAMPLE));
+        check("a null sample says so too", "no frames",
+              Telemetry.ringSub("fps", r, null));
+        check("the capability check reads a period", true,
+              Fps.isSupported("8333333\n"));
+        check("an empty reply is not support", false, Fps.isSupported(""));
+        check("a zero period is not support", false, Fps.isSupported("0\n"));
+        check("an error reply is not support", false,
+              Fps.isSupported("Unknown option\n"));
+        check("null is not support", false, Fps.isSupported(null));
         check("FPS leads when it works", "fps", Telemetry.ringKeys(l, true).get(0));
         Fps.Sample s120 = Fps.parseLatency(
             "8333333\n"

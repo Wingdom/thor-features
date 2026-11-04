@@ -92,6 +92,29 @@ public final class Fps {
 
     // --- which layer -------------------------------------------------------
 
+    /**
+     * Ask whether this build can measure frame rates at all.
+     *
+     * {@code --latency} with no layer prints the refresh period and stops, so
+     * it answers "does this interface still exist" without needing anything
+     * to be drawing. That separation matters: a build where the interface is
+     * gone and a moment where nothing happens to be on screen are completely
+     * different facts, and conflating them is what made the FPS ring vanish
+     * with no way to tell whether it was broken.
+     */
+    public static String supportCommand() {
+        return "dumpsys SurfaceFlinger --latency 2>/dev/null";
+    }
+
+    /** True when {@link #supportCommand} came back with a refresh period. */
+    public static boolean isSupported(String out) {
+        if (out == null) return false;
+        String[] lines = out.split("\n");
+        if (lines.length == 0) return false;
+        long period = Telemetry.parseLong(lines[0].trim());
+        return period != Telemetry.ABSENT && period > 0;
+    }
+
     /** Ask the compositor what layers exist. */
     public static String listCommand() {
         return "dumpsys SurfaceFlinger --list 2>/dev/null";

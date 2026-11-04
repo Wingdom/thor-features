@@ -46,7 +46,7 @@ if (r.code == 0) { /* r.out */ }
 ```
 
 `RootClient` takes a `Runner` in its constructor, so a fake runner tests your
-feature on the host with no device and no root — that is how all 431 tests
+feature on the host with no device and no root — that is how all 439 tests
 work. Keep new logic above that seam (pure text in, pure text out) and it is
 testable; put it in the activity and it is not.
 
@@ -520,12 +520,38 @@ Four kinds of layer that can never carry frames (`ActivityRecordInputSink`,
 `Background for`, `Bounds for`, `ActivityRecord{`) are dropped outright so no
 35 ms call is spent on them.
 
-### When nothing is drawing, the ring is absent
+### When nothing is drawing, the ring says so
 
-Not blank, not an em dash — absent, and the remaining four rings space out to
-fill the row. The probe runs once when the tab is first opened; if no layer
-yields frames, no FPS ring is built. A ring that always read an em dash would
-be the "looked alive and did nothing" failure this panel has already had.
+The first version of this made the ring *vanish* whenever the top screen was
+idle, on the reasoning that a permanently blank gauge is the "looked alive and
+did nothing" failure this panel has had before. That was the wrong call, and
+it was reported within the hour as "FPS is gone": an absent card and a broken
+one look exactly the same, so disappearing is the *same* failure rather than
+the cure for it.
+
+The ring is now gated on whether the build can measure at all, not on whether
+there is something to measure this instant. Those are separate questions and
+they have separate checks:
+
+| | |
+|---|---|
+| **Can this build measure?** | `dumpsys SurfaceFlinger --latency` with no layer, which prints the refresh period and stops. Needs nothing on screen. Gates whether the ring exists. |
+| **Is anything drawing?** | the layer lookup. Gates whether the ring has a number. |
+
+So on a build where the interface is gone there is no FPS ring, and on this
+one there always is — reading `—` over `no frames` when the top screen is
+idle. The gauge explains itself instead of leaving you to guess.
+
+### It picks up a game that starts later
+
+The layer is cached, and a sample going absent is the signal to look again, so
+a panel left open when a game launches starts reading on its own. The retry is
+rate-limited to five seconds, because resolution is two `dumpsys` calls plus
+up to four 35 ms `--latency` calls and "absent" is also what an idle screen
+looks like for minutes at a time.
+
+Verified: the panel open and reading `no frames`, a game launched without
+touching the panel, and the ring at 119/120 nine seconds later.
 
 ## What the button does
 
