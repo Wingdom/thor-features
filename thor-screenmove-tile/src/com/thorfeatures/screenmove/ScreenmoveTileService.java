@@ -17,11 +17,11 @@ import android.service.quicksettings.TileService;
  * cannot act.
  *
  * One constraint governs *when* root is asked for. onStartListening() must not
- * touch the CLI: Magisk's prompt cannot take focus over the open Quick
- * Settings shade, so a request made there is rejected rather than prompted and
- * the user never sees a dialog. The shade gets a static subtitle from
- * TileRender.idleLabel() and the first su request comes from onClick(), which
- * is a foreground action the prompt can appear over.
+ * touch the CLI: it runs on every shade open, so a request there costs an su
+ * spawn and a logged rejection each time, and on Magisk 31 it cannot prompt
+ * either -- the interactive su request was removed in 31.0. The shade gets a
+ * static subtitle from TileRender.idleLabel() and the first su request comes
+ * from onClick().
  */
 public class ScreenmoveTileService extends TileService {
 
@@ -41,7 +41,7 @@ public class ScreenmoveTileService extends TileService {
     /**
      * Render without asking for root. Deliberately names no ScreenmoveClient
      * call: this runs every time the shade opens, and an su request from here
-     * is rejected rather than prompted.
+     * is rejected -- on Magisk 31 silently, without any prompt.
      *
      * There is nothing to read and nothing to cache -- the subtitle names the
      * verb, not a direction, because the direction depends on live display

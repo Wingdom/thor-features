@@ -26,9 +26,10 @@ done
 rm -rf out; mkdir -p out/res out/classes out/dex
 
 # Cross-tile invariant, shared by all three tiles: onStartListening() must not
-# be able to reach the CLI client. A su request made while the shade is opening
-# is rejected rather than prompted, because Magisk cannot take focus over the
-# open shade. Lives one level up because all three tiles must agree.
+# be able to reach the CLI client. It runs on every shade open, so a su request
+# there costs a process spawn and a logged rejection each time -- and on Magisk
+# 31 it cannot prompt for access either. Lives one level up because all three
+# tiles must agree.
 echo "== tile root timing (shared) =="
 ../tests/test_tile_root_timing.sh || { echo "build aborted: tile root timing"; exit 1; }
 

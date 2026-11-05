@@ -161,10 +161,11 @@ public final class TestMain {
      * What the tile shows when the shade opens, before any su request.
      *
      * The defect this guards: onStartListening() used to call screenmove, so
-     * the shade opening fired an su request. Magisk's prompt cannot take focus
-     * over the open shade, so it was rejected rather than prompted and the
-     * tile reported "Root required" having asked the user nothing. Confirmed
-     * on device 2026-10-29 across all three thor tiles.
+     * the shade opening fired an su request -- one spawn and one logged
+     * rejection per shade open, and the tile reported "Root required".
+     * Confirmed on device 2026-10-29 across all three thor tiles. On Magisk 31
+     * such a request can never prompt (31.0 removed interactive su), so it
+     * bought nothing.
      */
     private static void idleRendering() {
         System.out.println("TileRender idle rendering -- the shade must not ask for root");

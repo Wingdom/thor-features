@@ -30,9 +30,10 @@ import android.service.quicksettings.TileService;
  *    startActivityAndCollapse(Intent) throws on Android 14+ and this is 17.
  *
  * A third constraint governs *when* root is asked for, and is the reason
- * onStartListening() renders from ModeStore rather than from stickfx: Magisk's
- * prompt cannot take focus over the open Quick Settings shade, so a request
- * made there is rejected, not prompted. See ModeStore and TileRender.
+ * onStartListening() renders from ModeStore rather than from stickfx: a request
+ * made as the shade opens costs an su spawn and a logged rejection every time
+ * and buys nothing. On Magisk 31 it cannot produce a prompt either -- there is
+ * no interactive su request any more. See ModeStore and TileRender.
  */
 public class StickTileService extends TileService {
 
@@ -134,10 +135,10 @@ public class StickTileService extends TileService {
     /**
      * Render from the cache. Deliberately names no StickfxClient call.
      *
-     * Quick Settings calls onStartListening() every time the shade opens. A su
-     * request made from there is rejected rather than prompted, because
-     * Magisk's prompt cannot take focus over the open shade -- so this path
-     * must stay root-free, and the first su request must come from onClick().
+     * Quick Settings calls onStartListening() every time the shade opens, so
+     * an su call here is one process spawn and one logged rejection per shade
+     * open -- and on Magisk 31 it can never prompt, so it buys nothing. This
+     * path stays root-free and the first su request comes from onClick().
      *
      * The read still happens off the main thread: the first SharedPreferences
      * access is disk I/O, and the tile already renders a frame late today.

@@ -3,12 +3,20 @@
 # shade is opening.
 #
 # Why this is a test and not a comment. Quick Settings calls
-# onStartListening() every time the shade opens. Magisk's prompt cannot take
-# focus over the open shade, so an su request made from there is *rejected*
-# rather than prompted -- the tile lands in "no root" and the user is never
-# asked anything. Confirmed on device 2026-10-29: rejections in logcat, no
-# prompt shown, no policy row for any of the three apps. The request has to
-# come from onClick(), which is a foreground action the prompt can appear over.
+# onStartListening() every time the shade opens, so an su request made from
+# there is paid on every shade open: one process spawn and one
+# `su: request rejected` in logcat, for a label the tile could remember.
+# Confirmed on device 2026-10-29 across all three apps.
+#
+# What it does NOT buy is a permission prompt by moving to onClick(), which is
+# what the original 2026-10-29 diagnosis claimed -- that Magisk's prompt could
+# not take focus over the open shade. Disproved on hardware 2026-10-30: with
+# the policy row deleted, a tap was rejected in the same millisecond and no
+# prompt appeared. Magisk 31.0 removed the interactive su request entirely and
+# flipped the default policy to Deny (topjohnwu/Magisk PR #10139); access is
+# granted ahead of time from the Magisk app's Superuser tab. The invariant
+# still holds on its own merits -- see DEVELOPING.md, "Magisk 31 removed the
+# su prompt".
 #
 # Each tile's own host tests cover what it renders from cache. They cannot
 # cover this, because it is a property of the TileService -- which needs the
