@@ -7,13 +7,22 @@ import android.content.SharedPreferences;
  * The last fan mode this tile observed under root.
  *
  * It exists so onStartListening() can put a label on the tile without calling
- * su. Asking for root as the shade opens is the defect this cache fixes:
- * Magisk's prompt cannot take focus over the open Quick Settings panel, so the
- * request is rejected rather than prompted and the user never sees a dialog --
- * the tile just reports "no root" having asked them nothing. The first su
- * request has to come from a tap, which is a foreground action the prompt can
- * appear over. Confirmed on device 2026-10-29: four rejections logged, no
- * prompt shown.
+ * su. Asking for root as the shade opens is the defect this cache fixes: it
+ * spawned an su process and logged a rejection on every single shade open, and
+ * the tile rendered a frame late waiting for it.
+ *
+ * NOTE: this cache does NOT make a permission prompt appear, and an earlier
+ * version of this comment claimed it would. The claim was that Magisk's prompt
+ * cannot take focus over the open shade, so a request made there is rejected
+ * rather than prompted, and that moving the first request to a tap -- a
+ * foreground action -- would let the prompt through. Tested on hardware
+ * 2026-10-30 by deleting the policy row and tapping: the tap was rejected in
+ * the same millisecond, with no prompt. Magisk 31.0 removed the interactive su
+ * request entirely and flipped the default policy from Query to Deny
+ * (topjohnwu/Magisk PR #10139); this device runs 31.1. Nothing prompts, in any
+ * context, so access must be granted ahead of time from the Superuser tab in
+ * the Magisk app with its "+" button. See DEVELOPING.md, "Magisk 31 removed
+ * the su prompt".
  *
  * The cost is a label that can be stale. thor-screenpanel drives the same
  * /system/bin/fanctl, so changing the mode from the AYN panel leaves this copy

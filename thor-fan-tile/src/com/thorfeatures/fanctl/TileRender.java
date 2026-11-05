@@ -15,17 +15,19 @@ package com.thorfeatures.fanctl;
  * STATE_UNAVAILABLE is still right for the brief moment while a change is
  * being applied, which is transient and deliberately not clickable.
  *
- * The second rule here is about *when* root is asked for, and was found the
- * same way. The tile used to call fanctl from onStartListening() to render its
- * label, which means it asked for root every time the Quick Settings shade
- * opened. Magisk's prompt cannot take focus over the open shade, so those
- * requests were rejected rather than prompted -- the tile reported "no root"
- * having never asked the user anything. Confirmed on device 2026-10-29: four
- * rejections in logcat, no prompt shown, and no policy row for the app.
- *
- * So shade-open rendering goes through cachedState() and names no su call at
- * all. The first su request happens on tap, which is a foreground action the
- * prompt can appear over.
+ * The second rule here is about *when* root is asked for. The tile used to
+ * call fanctl from onStartListening() to render its label, which means it
+ * asked for root every time the Quick Settings shade opened -- one su spawn
+ * and one logged rejection per shade open, for a label it could remember
+ * instead. So shade-open rendering goes through cachedState() and names no su
+ * call at all; the first su request happens on tap. *
+ * What that does NOT do is restore a permission prompt, though an earlier
+ * version of this comment said it would: the reasoning was that Magisk's
+ * prompt cannot take focus over the open shade and a tap would let it through.
+ * Disproved on hardware 2026-10-30 -- the tap was rejected in the same
+ * millisecond, no prompt. Magisk 31.0 removed the interactive su request
+ * outright and defaults to Deny; grants are made ahead of time from the Magisk
+ * app's Superuser tab. See DEVELOPING.md.
  */
 public final class TileRender {
 

@@ -14,14 +14,18 @@ package com.thorfeatures.screenmove;
  * So STATE_UNAVAILABLE is reserved for the transient "moving..." moment, where
  * being unclickable is the point.
  *
- * The second rule is about *when* root is asked for, and was found the same
- * way. The tile used to call screenmove from onStartListening() to render its
- * subtitle, which means it asked for root every time the Quick Settings shade
- * opened. Magisk's prompt cannot take focus over the open shade, so those
- * requests were rejected rather than prompted -- the tile reported "Root
- * required" having never asked the user anything. Confirmed on device
- * 2026-10-29 across all three thor tiles: rejections in logcat, no prompt
- * shown, no policy row for the apps.
+ * The second rule is about *when* root is asked for. The tile used to call
+ * screenmove from onStartListening() to render its subtitle, which means it
+ * asked for root every time the Quick Settings shade opened -- one su spawn
+ * and one logged rejection per shade open. Confirmed on device 2026-10-29
+ * across all three thor tiles.
+ *
+ * It does not follow that a tap would have been prompted instead, which an
+ * earlier version of this comment asserted: the claim was that Magisk's prompt
+ * cannot take focus over the open shade. Disproved on hardware 2026-10-30 --
+ * a tap was rejected in the same millisecond, with no prompt. Magisk 31.0
+ * removed the interactive su request entirely and defaults to Deny; grants
+ * come from the Magisk app's Superuser tab, ahead of time. See DEVELOPING.md.
  *
  * This tile has nothing it can cache its way around, unlike thor-fan-tile and
  * thor-stickfx-tile. Its subtitle names a *direction*, and the direction

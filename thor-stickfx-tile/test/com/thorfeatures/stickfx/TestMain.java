@@ -127,12 +127,13 @@ public class TestMain {
 
         System.out.println("\nTileRender cached rendering -- the shade must not ask for root");
         // The defect this guards: onStartListening() used to call stickfx, so
-        // the shade opening fired an su request. Magisk's prompt cannot take
-        // focus over the open shade, so it was rejected rather than prompted
-        // and the tile reported "no root" having asked the user nothing.
-        // Confirmed on device 2026-10-29 against this exact package (uid
-        // 10182, four rejections logged). Shade-open rendering now comes from
-        // the cache, and null means "never observed a mode under root".
+        // the shade opening fired an su request -- one spawn and one logged
+        // rejection per shade open, and the tile reported "no root". Confirmed
+        // on device 2026-10-29 against this exact package (uid 10182, four
+        // rejections logged). On Magisk 31 such a request can never prompt
+        // (31.0 removed interactive su), so it bought nothing. Shade-open
+        // rendering now comes from the cache, and null means "never observed
+        // a mode under root".
         check(TileRender.cachedState(null) != TileRender.UNAVAILABLE,
                 "a fresh install is never UNAVAILABLE",
                 "got UNAVAILABLE -- that withholds onClick, which is now the only "
