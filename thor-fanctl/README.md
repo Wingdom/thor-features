@@ -107,11 +107,28 @@ Verified on device (LineageOS `24.0-20261019`, kernel 5.15.220):
   `fanctl` gone from PATH, every trip back to stock (43000/45000, 55000)
 - idle after fix: state 0 / pwm 0 at ~42 °C, where it previously latched at 6
 
-**Not yet verified:** that `quiet` prevents a trip that would otherwise fire in
-real use. Through all testing `usb-therm` stayed around 40-42 °C and never
-crossed the stock 43 °C threshold on its own. The mechanism is proven; the
-day-to-day benefit needs a real charge-plus-game session to confirm.
-`performance` has been dry-run and unit-tested but **never applied to hardware**.
+**The premise is confirmed by measurement.** An earlier version of this section
+said `usb-therm` "stayed around 40-42 °C and never crossed the stock 43 °C
+threshold on its own", so the day-to-day benefit was unproven. That was already
+out of date when written:
+
+- **51.7 -> 55.7 °C** over 8.9 min (53 samples, 10 s interval) under charge plus
+  game load — 12.7 °C past the stock 43 °C trip, with the fan pinned at state
+  6-8 the whole time.
+- **47.5 °C at idle**, plugged in with nothing running, held across ~30 s of
+  sampling. The stock trip is exceeded with no load at all, which is the
+  clearest statement of why this module exists.
+
+`performance` has also been applied on hardware, by the device's owner.
+
+**Still genuinely open:** the **60 °C `quiet` trip has never been validated.**
+`usb-therm` has not been observed reaching 60 °C, so whether that trip ever
+fires in practice is unproven — and the 55.7 °C session charged at only ~4.5 W,
+because the battery was in constant-voltage taper and PD cannot negotiate while
+adb occupies the USB-C port. That figure is near a *best* case for this sensor,
+so the apparent margin says nothing about margin at 27 W. A real worst-case test
+needs `adb tcpip` over WiFi, a charger that negotiates full PD, and the battery
+at 30-50 %.
 
 ## Contract for the app layer
 
