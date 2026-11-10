@@ -65,7 +65,9 @@ host suite runs under bash while the modules run under Android's mksh:
 `fanctl selftest` and `appwatch selftest`.
 
 The Java tests need only a JDK and, for the tile components, an `android.jar`
-to compile against. Packaging an APK additionally needs `aapt2`, `d8`,
+to compile against. **Any JDK 17 or newer works** — every `javac` call passes
+`--release 17`, so the host's JDK version does not affect the output. CI runs
+21; this host is on 27. Packaging an APK additionally needs `aapt2`, `d8`,
 `apksigner` and `zipalign` from the Android build-tools.
 
 ## CI

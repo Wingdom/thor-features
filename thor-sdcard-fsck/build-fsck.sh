@@ -15,11 +15,39 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VER=1.1.1
 TARBALL_SHA=2a1574110e0d9ba11524744cac39454fb4084277cfa8ae53406a066600b825c8
-NDK="${ANDROID_NDK:-$HOME/android/ndk/26.0.10792818}"
+# $ANDROID_NDK wins if set; otherwise take the newest NDK installed under the
+# SDK. Do not pin a version here. This script hardcoded r26's path and an SDK
+# cleanup on 2026-11-09 removed exactly that directory, leaving only r29 --
+# discovery means the next cleanup cannot strand the build again.
+SDK="${ANDROID_SDK:-${ANDROID_HOME:-$HOME/android}}"
+if [ -n "${ANDROID_NDK:-}" ]; then
+    NDK="$ANDROID_NDK"
+else
+    NDK=$(ls -d "$SDK"/ndk/*/ 2>/dev/null | sort -V | tail -1)
+    NDK="${NDK%/}"
+fi
 TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-API=24          # NDK minimum; the binary runs on everything from Android 7 up
 
-[ -x "$TC/aarch64-linux-android$API-clang" ] || { echo "no NDK clang at $TC"; exit 1; }
+# Our own floor, not the NDK's -- r29 goes down to API 21. 24 is what the
+# binary has always been built against and it runs on Android 7 up, so there
+# is no reason to move it.
+API=24
+
+if [ -z "$NDK" ]; then
+    echo "no NDK found under $SDK/ndk -- install one with:"
+    echo "  sdkmanager 'ndk;<version>'"
+    echo "or point \$ANDROID_NDK at an existing install"
+    exit 1
+fi
+if [ ! -x "$TC/aarch64-linux-android$API-clang" ]; then
+    echo "no API-$API clang in $NDK"
+    echo "  looked for: $TC/aarch64-linux-android$API-clang"
+    echo "  this NDK offers:" $(ls "$TC" 2>/dev/null \
+        | sed -n 's/^aarch64-linux-android\([0-9]\{1,\}\)-clang$/\1/p' \
+        | sort -n | tr '\n' ' ')
+    exit 1
+fi
+echo "== NDK: $NDK (API $API)"
 
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
