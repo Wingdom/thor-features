@@ -87,11 +87,19 @@ hand-placed under `/data/adb/modules/`: `file_contexts` matches
 executable by vold. Magisk derives the label from the target path, so flashing
 gets it right.
 
-To rebuild the binary itself from upstream (needs `$ANDROID_NDK`):
+To rebuild the binary itself from upstream:
 
 ```sh
 ./build-fsck.sh
 ```
+
+It takes the newest NDK installed under `$ANDROID_SDK`/`$ANDROID_HOME`
+(default `~/android`), so no environment setup is needed; set `$ANDROID_NDK`
+to pin a specific one. It used to hardcode r26's path, which broke when that
+NDK was removed in a cleanup — if no usable NDK is found it now names the API
+levels the installed one does offer instead of failing blankly. Rebuilding
+gives a working equivalent, not the same sha256, because the NDK embeds a
+build id.
 
 ## Disable / remove
 

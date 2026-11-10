@@ -126,6 +126,11 @@ not exist on this host, and `sdkmanager` refused to start. Corrected
 symlink rather than the versioned Cellar path, so a JDK upgrade will not break
 it again. No override is needed now.
 
+That choice has since been exercised: JDK 21 was removed from this host on
+2026-11-09 and the symlink now resolves to **27** with nothing to change here.
+Builds are unaffected by the JDK version because every `javac` call passes
+`--release 17`.
+
 ## Tests
 
     ./build.sh      # runs the host tests first, refuses to package on failure

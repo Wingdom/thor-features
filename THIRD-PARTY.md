@@ -28,7 +28,7 @@ themselves; the module works unchanged either way.
 | **Size / sha256** | 34 888 bytes — `50e7e79ba518ba596acb53259fbaa38137101969fbdddc6f0d8a5832af92e02f` |
 | **Licence** | **GPL-2.0** — `exfatprogs` is free software |
 | **Upstream source** | <https://github.com/exfatprogs/exfatprogs>, release `1.1.1` — tarball sha256 `2a1574110e0d9ba11524744cac39454fb4084277cfa8ae53406a066600b825c8` |
-| **Origin** | **Built here** from that tarball by `thor-sdcard-fsck/build-fsck.sh`, cross-compiled with NDK r26 clang for `aarch64-linux-android24` |
+| **Origin** | **Built here** from that tarball by `thor-sdcard-fsck/build-fsck.sh`, cross-compiled for `aarch64-linux-android24`. The binary shipped above was built with NDK **r26** clang; `build-fsck.sh` no longer pins a version and uses whichever NDK is installed. **r29** was verified on 2026-11-10 to produce an equivalent binary — same target API, same `libc`/`libdl` dependencies, PIE, 34 728 bytes — after r26 was removed from this host |
 
 **Corresponding source.** `exfatprogs` is GPL-2.0, so distributing this binary
 carries an obligation to make the matching source available. The release above
