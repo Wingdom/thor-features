@@ -13,7 +13,8 @@ programmable AYN button. LineageOS has none of them. This brings them back.
 
 Most features come in two halves: a **Magisk module** that does the work, and an
 **app** that gives you something to tap. You can install just the module if you
-prefer, except where noted.
+prefer, except where noted. Stick calibration is the one that is an app on its
+own — it writes a calibration once and has nothing to do at boot.
 
 ### The things with a screen
 
@@ -24,6 +25,7 @@ prefer, except where noted.
 | **Joystick lighting** — light the stick rings while charging, or let them breathe. | `thor-stickfx` | `thor-stickfx-tile` |
 | **Move an app to the other screen** — one tap sends whatever you're using across. | `thor-screenmove` | `thor-screenmove-tile` |
 | **Per-game fan profiles** — pick a fan setting per game; it switches when you launch. | `thor-appwatch` | `thor-appprofiles` |
+| **Stick calibration** — makes the sticks reach full deflection on the diagonals, which the built-in wizard cannot. | — | `thor-stickcal` |
 
 Quick Settings tiles show the current setting at a glance, and tapping one opens
 a picker:
@@ -84,6 +86,7 @@ app. Do that for each one you installed:
 | Move-app tile | Thor screen move |
 | AYN button panel | Thor Screen Panel |
 | Per-game fan profiles | Fan profiles |
+| Stick calibration | Thor Stick Cal |
 
 Each one should show a switch turned on when you're done.
 
@@ -110,6 +113,7 @@ releases:
 | Move-app tile | `^thor-screenmove-tile-v` |
 | AYN button panel | `^thor-screenpanel-v` |
 | Per-game fan profiles | `^thor-appprofiles-v` |
+| Stick calibration | `^thor-stickcal-v` |
 
 Obtainium calls this a regular-expression filter on releases; the exact wording
 of the field varies a little between versions.
