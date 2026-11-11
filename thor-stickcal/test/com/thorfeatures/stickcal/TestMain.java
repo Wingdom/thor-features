@@ -216,6 +216,41 @@ public final class TestMain {
 
         RestMeasure brief = GateFixture.rest(GateFixture.REST_BEFORE, 2_000);
         ok("two seconds is too short to settle", !brief.settled());
+
+        // --- the stick travelling home is not noise -----------------------
+        // A hands-off phase starts the instant the previous one ends, so its
+        // first samples are the stick still returning from a roll. Measured
+        // over the whole phase, that reported "noise 1358" on a unit whose
+        // noise is zero, and told the user their 60-count deadzone was below
+        // the 1019 counts the unit supposedly needed. Everything here is
+        // measured over the trailing settle window instead.
+        RestMeasure arriving = new RestMeasure();
+        long t = 0;
+        for (int i = 0; i < 12; i++, t += 100) {          // 1.2 s coming home
+            int far = 1200 - i * 100;
+            arriving.add(t, new RawSample(111 + far, -26, 138, 67, 0, 0));
+        }
+        for (; t <= 9_000; t += 100) {                     // then genuinely still
+            arriving.add(t, new RawSample(111, -26, 138, 67, 0, 0));
+        }
+        ok("it does settle once the stick is home", arriving.settled());
+        check("the approach is not counted as noise", 0, arriving.span(0));
+        check("and the median is the resting value", 111, arriving.median(0));
+
+        RestAnalysis fromArriving = new RestAnalysis(arriving, arriving);
+        check("so the deadzone floor stays sane", 0, fromArriving.requiredDeadzone(0));
+        check("and the recommendation is the floor, not a thousand", 20,
+              fromArriving.recommendedDeadzone(Stick.LEFT));
+
+        // The window is trailing, so a phase that is still moving at the end
+        // must not be mistaken for a settled one whatever came before it.
+        RestMeasure leaving = new RestMeasure();
+        long u = 0;
+        for (; u <= 6_000; u += 100) leaving.add(u, new RawSample(111, -26, 138, 67, 0, 0));
+        for (int i = 0; i < 12; i++, u += 100) {
+            leaving.add(u, new RawSample(111 + i * 100, -26, 138, 67, 0, 0));
+        }
+        ok("a stick being picked up again does not read as settled", !leaving.settled());
     }
 
     // ------------------------------------------------------------- the gate ---
@@ -582,6 +617,7 @@ public final class TestMain {
             DeviceCommands.readRaw(),
             DeviceCommands.readPrefs(),
             DeviceCommands.probeFractionalSleep(),
+            DeviceCommands.canSeeAynParts(),
             DeviceCommands.streamRaw(true),
             DeviceCommands.streamRaw(false),
             DeviceCommands.forceStopAynParts(),
@@ -602,6 +638,33 @@ public final class TestMain {
         }
 
         ok("root is asserted, not assumed", DeviceCommands.WHOAMI.equals("id -u"));
+
+        // --- the mount namespace ------------------------------------------
+        // Measured on the device 2026-11-11: an app's mount namespace lists
+        // TWO entries under /data/user_de/0 - itself and GMS - where the
+        // shell's lists 223. So a root shell started from an app is genuinely
+        // root and still cannot see AynParts at all: no SELinux denial, no
+        // error, [ -f <its prefs> ] simply false. The calibration reached the
+        // node and took effect while the write that makes it survive a reboot
+        // silently did not happen. --mount-master is what fixes it.
+        String[][] su = DeviceCommands.suCandidates();
+        ok("there is more than one way to start su", su.length >= 2);
+        check("the first attempt asks for the global mount namespace",
+              "su --mount-master", String.join(" ", su[0]));
+        check("the last falls back to plain su", "su", String.join(" ", su[su.length - 1]));
+        for (String[] c : su) {
+            ok("candidate starts with su: " + String.join(" ", c), "su".equals(c[0]));
+        }
+        // Checked when the session opens so the app can say a calibration
+        // will not persist BEFORE a minute of rolling the sticks, not after.
+        ok("the visibility probe names AynParts",
+           DeviceCommands.canSeeAynParts().contains(PrefsXml.PACKAGE));
+        ok("and answers yes or no",
+           DeviceCommands.canSeeAynParts().contains("echo yes")
+                && DeviceCommands.canSeeAynParts().contains("echo no"));
+        ok("the probe is one line", !DeviceCommands.canSeeAynParts().contains("\n"));
+        ok("the probe uses an absolute path",
+           DeviceCommands.canSeeAynParts().contains("/data/user_de/0/"));
 
         ok("the stream reads one line per open", DeviceCommands.streamRaw(true).contains("read -r L <"));
         ok("fractional sleep streams at 20 Hz", DeviceCommands.streamRaw(true).contains("sleep 0.05"));
@@ -728,5 +791,29 @@ public final class TestMain {
         travel.add(0.1, 0.0);
         travel.add(0.2, 0.0);
         check("small deflections are ignored", 0, travel.bucketsCovered());
+
+        // --- what to say on the way out ------------------------------------
+        // Found on the device: the obvious thing to do on the check screen is
+        // roll one stick and move on, so arriving at Done without a pass
+        // usually means "not finished", not "still broken". Saying the latter
+        // sends the user back to redo work that was fine.
+        check("a clean pass says nothing", null, Report.verifyExitNote(good, good));
+
+        VerifyMap untouched = new VerifyMap();
+        String unswept = Report.verifyExitNote(good, untouched);
+        ok("an unswept stick is called unswept", unswept.contains("never swept"));
+        ok("and is not called a shortfall", !unswept.contains("below full scale"));
+        ok("and says the check is incomplete rather than failed",
+           unswept.contains("incomplete, not failed"));
+        ok("and counts both sticks' directions", unswept.contains("of 48"));
+
+        String shortfall = Report.verifyExitNote(bad, good);
+        ok("a genuine shortfall is called one", shortfall.contains("below full scale"));
+        ok("and points at the margin", shortfall.contains("raise"));
+        ok("and does not mention sweeping", !shortfall.contains("never swept"));
+
+        String both = Report.verifyExitNote(bad, untouched);
+        ok("both problems at once are both named",
+           both.contains("below full scale") && both.contains("never swept"));
     }
 }

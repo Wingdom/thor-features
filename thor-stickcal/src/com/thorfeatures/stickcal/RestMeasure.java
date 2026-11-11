@@ -57,7 +57,27 @@ public final class RestMeasure {
     public long elapsedMs() { return n == 0 ? 0 : t[n - 1] - t[0]; }
 
     /**
-     * The axis's resting value.
+     * Start of the settle window: the stretch this phase actually measures.
+     *
+     * A hands-off phase begins the moment the previous one ends, so its first
+     * samples are the stick still travelling home from a roll - a movement of
+     * well over a thousand counts. Everything this class reports is therefore
+     * measured over the trailing window only, which is the part where the
+     * user's hands are genuinely off.
+     *
+     * Found on the device 2026-11-11: measuring over the whole phase reported
+     * "noise 1358" on a unit whose noise is zero, and told the user their
+     * deadzone was below the 1019 counts the unit needed. The calibration was
+     * unaffected - the solver takes the deadzone the user chose, and the
+     * centre is a median, which shrugs off a few approach samples - but the
+     * figure shown was nonsense and the warning was false.
+     */
+    private long windowStart() {
+        return n == 0 ? Long.MIN_VALUE : t[n - 1] - SETTLE_MS;
+    }
+
+    /**
+     * The axis's resting value, over the settle window.
      *
      * Median, not mean: a single sample taken while the user was still
      * letting go would pull a mean, and the centre it feeds is the one number
@@ -65,14 +85,23 @@ public final class RestMeasure {
      */
     public int median(int axis) {
         if (n == 0) return 0;
-        int[] c = new int[n];
-        System.arraycopy(v[axis], 0, c, 0, n);
+        long since = windowStart();
+        int count = 0;
+        for (int i = 0; i < n; i++) if (t[i] >= since) count++;
+        if (count == 0) return 0;
+        int[] c = new int[count];
+        int k = 0;
+        for (int i = 0; i < n; i++) if (t[i] >= since) c[k++] = v[axis][i];
         java.util.Arrays.sort(c);
-        return c[n / 2];
+        return c[count / 2];
     }
 
-    /** Peak-to-peak movement over the whole phase. Zero on this unit. */
-    public int span(int axis) { return spanSince(axis, Long.MIN_VALUE); }
+    /**
+     * Peak-to-peak movement while the stick was at rest. Zero on this unit.
+     *
+     * Over the settle window, not the whole phase - see {@link #windowStart}.
+     */
+    public int span(int axis) { return spanSince(axis, windowStart()); }
 
     private int spanSince(int axis, long sinceMs) {
         int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
