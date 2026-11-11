@@ -25,7 +25,7 @@ own — it writes a calibration once and has nothing to do at boot.
 | **Joystick lighting** — light the stick rings while charging, or let them breathe. | `thor-stickfx` | `thor-stickfx-tile` |
 | **Move an app to the other screen** — one tap sends whatever you're using across. | `thor-screenmove` | `thor-screenmove-tile` |
 | **Per-game fan profiles** — pick a fan setting per game; it switches when you launch. | `thor-appwatch` | `thor-appprofiles` |
-| **Stick calibration** — makes the sticks reach full deflection on the diagonals, which the built-in wizard cannot. | — | `thor-stickcal` |
+| **Stick calibration** — makes the sticks reach full tilt on the diagonals, so characters stop walking when you push diagonally. | — | `thor-stickcal` |
 
 Quick Settings tiles show the current setting at a glance, and tapping one opens
 a picker:
@@ -155,6 +155,10 @@ bottom screen.
   full uninstall and reinstall does.
 - **The AYN panel doesn't appear.** It needs four modules present; its own
   installer will tell you which one is missing.
+- **The sticks went back to walking on diagonals.** Opening LineageOS's own
+  joystick calibration wizard replaces the calibration with a per-axis one,
+  which is the thing that cannot reach the diagonals. That's the wizard doing
+  its job, not a fault — just run Thor Stick Cal again afterwards.
 
 Each component folder has its own README with more detail.
 
