@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A plain full-screen activity, unlike thor-screenpanel's floating
+         panel: a wizard with a minute of stick rolling in it wants the whole
+         screen, and it must not sit translucently over whatever was running. -->
+    <style name="CalTheme" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:windowBackground">@color/cal_surface</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
