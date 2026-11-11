@@ -38,6 +38,52 @@ public final class DeviceCommands {
     /** Run first in any session. Anything else is read in its light. */
     public static final String WHOAMI = "id -u";
 
+    /**
+     * How to start the privileged shell, most capable first.
+     *
+     * <h3>Why {@code --mount-master} is not optional here</h3>
+     *
+     * {@code su} inherits the <b>mount namespace of whoever called it</b>, and
+     * an Android app's namespace hides every other package's data directory.
+     * Measured on this device 2026-11-11: the shell's namespace lists 223
+     * entries under {@code /data/user_de/0/}, and the namespace this app runs
+     * in lists <b>two</b> - itself and GMS. AynParts is not merely
+     * unreadable there, it does not exist, so {@code [ -f <its prefs> ]} is
+     * simply false.
+     *
+     * That failed silently and in the worst possible way: the calibration
+     * reached the node and took effect, so everything looked right, while the
+     * one write that makes it survive a reboot never happened. There was no
+     * SELinux denial to find, because nothing was denied.
+     *
+     * {@code --mount-master} runs in the global namespace instead, where the
+     * path is there. The plain {@code su} fallback exists so that a build
+     * without the flag still gets everything that lives in {@code /sys} -
+     * which is the whole of the capture and the node write - rather than
+     * nothing at all.
+     *
+     * No other component here needed this, and that is not luck: they only
+     * ever touch {@code /sys} and {@code /system} binaries, which an app's
+     * namespace shows in full.
+     */
+    public static String[][] suCandidates() {
+        return new String[][] {
+            { "su", "--mount-master" },
+            { "su" },
+        };
+    }
+
+    /**
+     * Whether this shell can see AynParts at all.
+     *
+     * Checked once when the session opens, so the app can say up front that a
+     * calibration will not survive a reboot - rather than after the user has
+     * spent a minute rolling the sticks and tapped Apply.
+     */
+    public static String canSeeAynParts() {
+        return "[ -d /data/user_de/0/" + PrefsXml.PACKAGE + " ] && echo yes || echo no";
+    }
+
     private DeviceCommands() {}
 
     public static String readCalibration() { return "cat " + NODE_CALIBRATION; }

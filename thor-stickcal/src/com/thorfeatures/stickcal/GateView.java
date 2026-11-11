@@ -21,12 +21,23 @@ import android.view.View;
  *
  * <h3>Orientation</h3>
  *
- * Drawn with +x right and +y up, the mathematical convention, which is not
- * necessarily how the stick is oriented in the hand - the sign convention of
- * the raw axes is not documented and does not affect any of the arithmetic.
- * It does not need to be known, either: during a roll the live cursor tracks
- * the stick, so the user can see within a second which way the plot is
- * turning.
+ * Measured on the device 2026-11-11, by holding the left stick and reading
+ * the node: at rest {@code LX=138, LY=-26}; held fully right {@code LX=-1283};
+ * held fully down {@code LY=-1273}. So <b>raw +X is physically left</b> and
+ * raw +Y is physically up, and the X axis has to be mirrored to draw.
+ *
+ * It was drawn unmirrored at first, on the reasoning that the sign convention
+ * is undocumented, does not affect any of the arithmetic, and would be
+ * self-evident from the live cursor. The first two are true and the third was
+ * the mistake: the cursor is self-evident, but the <i>gate</i> and the marks
+ * showing which sectors are still short come from the same raw data, so they
+ * were mirrored too - and those marks exist to tell the user where to roll.
+ * They were pointing at the opposite side of the circle.
+ *
+ * None of this reaches the calibration. The limits are written as
+ * {@code center ± travel} in raw counts and the driver's transfer function
+ * works in those same counts, so which physical direction raw-positive means
+ * never enters the arithmetic.
  */
 public final class GateView extends View {
 
@@ -51,6 +62,16 @@ public final class GateView extends View {
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint grid = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /**
+     * Raw X counts the opposite way to the screen; raw Y agrees with it.
+     * See the orientation note above - both were measured, not assumed.
+     *
+     * Applied only to raw-space drawing. The verify phase's numbers come from
+     * MotionEvent, whose X is already positive-right and whose Y is negated
+     * where it is fed in, so it must not be mirrored again.
+     */
+    private static final double RAW_X_SIGN = -1;
 
     private Mode mode = Mode.CAPTURE;
     private String caption = "";
@@ -167,7 +188,7 @@ public final class GateView extends View {
         for (int b = 0; b < GateMap.BUCKETS; b++) {
             if (radii[b] <= 0) continue;
             double ang = GateMap.bucketAngle(b);
-            float px = cx + (float) (r * radii[b] / scale * Math.cos(ang));
+            float px = cx + (float) (RAW_X_SIGN * r * radii[b] / scale * Math.cos(ang));
             float py = cy - (float) (r * radii[b] / scale * Math.sin(ang));
             if (!started) { p.moveTo(px, py); started = true; } else { p.lineTo(px, py); }
         }
@@ -190,8 +211,10 @@ public final class GateView extends View {
                 if (gate.bucketOk(b)) continue;
                 double a0 = Math.toRadians(b * GateMap.BUCKET_DEGREES);
                 double a1 = Math.toRadians((b + 1) * GateMap.BUCKET_DEGREES);
-                canvas.drawLine(cx + (float) (r * Math.cos(a0)), cy - (float) (r * Math.sin(a0)),
-                                cx + (float) (r * Math.cos(a1)), cy - (float) (r * Math.sin(a1)), stroke);
+                canvas.drawLine(
+                        cx + (float) (RAW_X_SIGN * r * Math.cos(a0)), cy - (float) (r * Math.sin(a0)),
+                        cx + (float) (RAW_X_SIGN * r * Math.cos(a1)), cy - (float) (r * Math.sin(a1)),
+                        stroke);
             }
         }
 
@@ -202,7 +225,7 @@ public final class GateView extends View {
             for (int i = 0; i <= 180; i++) {
                 double ang = Math.toRadians(i * 2);
                 double rad = solution.saturationRadius(ang);
-                float px = cx + (float) (r * rad / scale * Math.cos(ang));
+                float px = cx + (float) (RAW_X_SIGN * r * rad / scale * Math.cos(ang));
                 float py = cy - (float) (r * rad / scale * Math.sin(ang));
                 if (i == 0) c.moveTo(px, py); else c.lineTo(px, py);
             }
@@ -263,7 +286,7 @@ public final class GateView extends View {
         fill.setColor(COLOR_CURSOR);
         fill.setAlpha(255);
         fill.setStyle(Paint.Style.FILL);
-        float px = cx + (float) (r * liveX / scale);
+        float px = cx + (float) (RAW_X_SIGN * r * liveX / scale);
         float py = cy - (float) (r * liveY / scale);
         canvas.drawCircle(px, py, dp(4), fill);
     }

@@ -198,12 +198,21 @@ public final class CalibrationActivity extends Activity implements RawStream.Lis
         RootShell.Result prefs = shell.run(DeviceCommands.readPrefs());
         if (prefs.ok() && !prefs.out.trim().isEmpty()) store.saveOriginalPrefs(prefs.out);
 
+        final boolean persists = shell.canSeeAynParts();
         post(() -> {
             base = parsed;
             String saved = store.originalCalibration();
+            // Said now, not after Apply. Without AynParts' directory in view
+            // the calibration can still be applied and still takes effect -
+            // it just will not come back after a reboot, and that is worth
+            // knowing before spending a minute rolling the sticks.
+            String persistence = persists ? ""
+                    : "  — WARNING: AynParts is not reachable from this shell,"
+                      + " so a calibration will not survive a reboot";
             status.setText("found " + cal.trimmed()
                     + (first ? "  (recorded as the original)"
-                             : "  (original on file: " + saved + ")"));
+                             : "  (original on file: " + saved + ")")
+                    + persistence);
             render();
         });
     }
@@ -222,13 +231,14 @@ public final class CalibrationActivity extends Activity implements RawStream.Lis
                 apply();
                 return;
             case VERIFY:
-                if (!verifyLeft.passed() || !verifyRight.passed()) {
-                    // Not blocked, but not glossed over either: a direction
-                    // that does not saturate is the original fault, and the
-                    // user is the one who decides whether to live with it.
-                    status.setText("finished with directions still under full scale"
-                            + " — Back to the review to raise the margin, or roll again");
-                }
+                // Not blocked, but not glossed over either: a direction that
+                // does not saturate is the original fault, and the user is the
+                // one who decides whether to live with it. The note
+                // distinguishes that from a check that was simply not
+                // finished, which is the far more common reason to arrive
+                // here without a pass.
+                String note = Report.verifyExitNote(verifyLeft, verifyRight);
+                if (note != null) status.setText(note);
                 phase = Phase.DONE;
                 break;
             case DONE:
@@ -350,10 +360,12 @@ public final class CalibrationActivity extends Activity implements RawStream.Lis
     private void startStream() {
         if (stream != null) return;
         io.execute(() -> {
-            boolean frac = shell.open() && shell.fractionalSleep();
+            boolean ok = shell.open();
+            boolean frac = ok && shell.fractionalSleep();
+            String[] argv = shell.argv();
             post(() -> {
                 if (!phase.needsStream()) return;
-                stream = new RawStream(this, frac);
+                stream = new RawStream(this, frac, argv);
                 if (!stream.start()) stream = null;
             });
         });

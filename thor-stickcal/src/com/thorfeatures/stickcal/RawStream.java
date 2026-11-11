@@ -35,14 +35,24 @@ public final class RawStream implements AutoCloseable {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Listener listener;
     private final boolean fractionalSleep;
+    /**
+     * Started the same way the command session was.
+     *
+     * Nothing this stream reads lives outside {@code /sys}, so the mount
+     * namespace makes no difference to it - but a second way of starting
+     * {@code su} is a second thing that can diverge, and the one that already
+     * worked is the one to copy.
+     */
+    private final String[] argv;
 
     private Process proc;
     private Thread reader;
     private volatile boolean stopping;
 
-    public RawStream(Listener listener, boolean fractionalSleep) {
+    public RawStream(Listener listener, boolean fractionalSleep, String[] argv) {
         this.listener = listener;
         this.fractionalSleep = fractionalSleep;
+        this.argv = argv == null || argv.length == 0 ? new String[] { "su" } : argv.clone();
     }
 
     /** Milliseconds between samples, so callers can reason about rates. */
@@ -51,7 +61,7 @@ public final class RawStream implements AutoCloseable {
     public boolean start() {
         if (proc != null) return true;
         try {
-            Process p = new ProcessBuilder("su").redirectErrorStream(true).start();
+            Process p = new ProcessBuilder(argv).redirectErrorStream(true).start();
             Writer w = new OutputStreamWriter(p.getOutputStream());
             w.write(RootProtocol.prelude());
             w.write(DeviceCommands.streamRaw(fractionalSleep));

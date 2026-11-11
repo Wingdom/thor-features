@@ -58,6 +58,8 @@ public final class RootShell implements AutoCloseable {
     private String sentinel;
     private boolean denied;
     private boolean fractionalSleep = true;
+    private boolean canSeeAynParts;
+    private String[] argv;
 
     /** True once su has been tried and did not give us uid 0. */
     public boolean denied() { synchronized (lock) { return denied; } }
@@ -65,40 +67,71 @@ public final class RootShell implements AutoCloseable {
     /** Whether this shell's sleep takes fractions of a second. */
     public boolean fractionalSleep() { synchronized (lock) { return fractionalSleep; } }
 
+    /**
+     * Whether AynParts' data directory is reachable from this shell.
+     *
+     * False means the calibration can be applied but cannot be made to
+     * survive a reboot, which the user is told before they start rather than
+     * after they have rolled the sticks and tapped Apply.
+     */
+    public boolean canSeeAynParts() { synchronized (lock) { return canSeeAynParts; } }
+
+    /** How this shell was started, so a stream can match it. */
+    public String[] argv() { synchronized (lock) { return argv == null ? null : argv.clone(); } }
+
     public boolean open() {
         synchronized (lock) {
             if (proc != null && proc.isAlive()) return true;
             if (denied) return false;
             closeLocked();
-            try {
-                sentinel = RootProtocol.newSentinel();
-                Process p = new ProcessBuilder("su").redirectErrorStream(true).start();
-                Writer w = new OutputStreamWriter(p.getOutputStream());
-                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                w.write(RootProtocol.prelude());
-                w.flush();
-                proc = p; in = w; out = r;
-
-                Result id = exchange(DeviceCommands.WHOAMI);
-                if (!id.ok() || !"0".equals(id.trimmed())) {
-                    Log.w(TAG, "su did not yield uid 0: '" + id.trimmed() + "'");
-                    closeLocked();
-                    denied = true;
-                    return false;
-                }
-                // Probed once per session rather than assumed: a sleep that
-                // rejected 0.05 would fail every iteration of the capture
-                // loop and spin a core instead of sampling.
-                fractionalSleep = "frac".equals(
-                        exchange(DeviceCommands.probeFractionalSleep()).trimmed());
-                Log.i(TAG, "root session open, fractional sleep=" + fractionalSleep);
-                return true;
-            } catch (Exception e) {
-                Log.w(TAG, "could not open root session: " + e);
+            // Most capable first. A build whose su lacks --mount-master still
+            // gets everything that lives in /sys - which is the whole capture
+            // and the node write - rather than no root at all.
+            for (String[] candidate : DeviceCommands.suCandidates()) {
+                if (tryOpen(candidate)) return true;
                 closeLocked();
-                denied = true;
+            }
+            denied = true;
+            return false;
+        }
+    }
+
+    /** One attempt at a privileged shell. Caller holds the lock. */
+    private boolean tryOpen(String[] candidate) {
+        try {
+            sentinel = RootProtocol.newSentinel();
+            Process p = new ProcessBuilder(candidate).redirectErrorStream(true).start();
+            Writer w = new OutputStreamWriter(p.getOutputStream());
+            BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            w.write(RootProtocol.prelude());
+            w.flush();
+            proc = p; in = w; out = r;
+
+            Result id = exchange(DeviceCommands.WHOAMI);
+            if (!id.ok() || !"0".equals(id.trimmed())) {
+                Log.w(TAG, String.join(" ", candidate) + " did not yield uid 0: '"
+                        + id.trimmed() + "'");
                 return false;
             }
+            // Probed once per session rather than assumed: a sleep that
+            // rejected 0.05 would fail every iteration of the capture loop
+            // and spin a core instead of sampling.
+            fractionalSleep = "frac".equals(
+                    exchange(DeviceCommands.probeFractionalSleep()).trimmed());
+            // And this one because an app's mount namespace hides other
+            // packages' data directories, so a shell can be genuinely root
+            // and still not see the file that makes a calibration persist.
+            canSeeAynParts = "yes".equals(
+                    exchange(DeviceCommands.canSeeAynParts()).trimmed());
+            argv = candidate.clone();
+            Log.i(TAG, "root session open via '" + String.join(" ", candidate)
+                    + "', fractional sleep=" + fractionalSleep
+                    + ", AynParts visible=" + canSeeAynParts);
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "could not open root session via '"
+                    + String.join(" ", candidate) + "': " + e);
+            return false;
         }
     }
 

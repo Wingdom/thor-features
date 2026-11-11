@@ -94,6 +94,42 @@ public final class Report {
                 v.worst() * 100, v.best() * 100);
     }
 
+    /**
+     * What to say when the user leaves the check phase without a clean pass,
+     * or null when both sticks passed.
+     *
+     * Two quite different things make {@code passed()} false, and saying the
+     * wrong one is worse than saying nothing. A direction that was swept and
+     * fell short is the original fault returning. A direction that was never
+     * swept is just an unfinished check - and on the device it was the
+     * common case, because the obvious thing to do on that screen is roll one
+     * stick and move on. Telling someone their calibration is short when they
+     * simply have not rolled the other stick sends them back to redo work
+     * that was fine.
+     */
+    public static String verifyExitNote(VerifyMap left, VerifyMap right) {
+        if (left.passed() && right.passed()) return null;
+
+        int shortfalls = left.bucketsUnder() + right.bucketsUnder();
+        int unswept = (GateMap.BUCKETS - left.bucketsCovered())
+                + (GateMap.BUCKETS - right.bucketsCovered());
+
+        if (shortfalls > 0 && unswept > 0) {
+            return String.format(Locale.US,
+                    "%d directions below full scale, and %d never swept"
+                    + " — roll both sticks fully to see the rest",
+                    shortfalls, unswept);
+        }
+        if (shortfalls > 0) {
+            return String.format(Locale.US,
+                    "%d directions below full scale — Back to the review to raise"
+                    + " the margin, or roll again", shortfalls);
+        }
+        return String.format(Locale.US,
+                "nothing fell short, but %d of 48 directions were never swept"
+                + " — the check is incomplete, not failed", unswept);
+    }
+
     private static int max(int[] v) {
         int m = 0;
         for (int x : v) m = Math.max(m, x);
