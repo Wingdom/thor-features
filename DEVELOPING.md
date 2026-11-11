@@ -13,6 +13,8 @@ thor-aynkey  ──> /data/adb/thor-aynkey/action.sh ──> thor-screenpanel (A
 thor-screenpanel ──> screenblank + screenmove
 
 thor-appprofiles (APK) ──> thor-appwatch ──> thor-fanctl
+
+thor-stickcal (APK) ──> thor-screenpanel/src/.../RootProtocol.java  (build only)
 ```
 
 - **`thor-screenpanel` needs three things present**: `screenblank`,
@@ -25,6 +27,17 @@ thor-appprofiles (APK) ──> thor-appwatch ──> thor-fanctl
   Magisk modules writing the same `/system` path would conflict.
 - Each tile requires **its own module**, and nothing else. Each tile's README
   lists the exact CLI commands it calls.
+- **`thor-stickcal` has no module and no runtime dependency on anything here**,
+  but it does have a **build-time** one: its `build.sh` compiles
+  `RootProtocol.java` out of `thor-screenpanel/src/`. How a long-lived `su`
+  process is fed commands and told where each reply ends is one behaviour, and
+  a second copy of it would be a second thing to keep right. The dependency is
+  source-level only, so there is no version skew to manage — but moving or
+  renaming that file breaks this build, which is why `build.sh` asserts it is
+  there rather than letting `javac` explain.
+  At runtime it depends on **AynParts** (`org.lineageos.settings.ayn`) for one
+  thing only: its boot receiver is what restores the calibration after a
+  reboot. The node itself resets to the kernel default every boot.
 - **`thor-appwatch` needs `thor-fanctl`** and refuses to install without it,
   because the fan tier is the only thing it applies. `thor-appprofiles` in turn
   needs `thor-appwatch`. Unusually, the two also share a **file format** — the
@@ -55,6 +68,12 @@ Measured 2026-10-29: **890 host assertions across 24 suites, all passing** —
 561 in shell test scripts and 329 in Java (`thor-screenpanel` 95,
 `thor-appprofiles` 60, `thor-stickfx-tile` 59, `thor-screenmove-tile` 59,
 `thor-fan-tile` 56).
+
+Added since that count: **`thor-stickcal` 211** (2026-11-11), the largest Java
+suite here, because its solver is pure arithmetic that writes a hardware
+calibration — and because its fixture is the two stick gates actually measured
+on this unit, so a change that would produce a worse calibration fails on the
+host rather than on the device.
 
 Counted by running each suite, not by addition: `tests/test_tile_root_timing.sh`
 is shared, so all three tile builds run it and a naive sum triple-counts its 6
@@ -175,7 +194,7 @@ code is lower than the installed one.
 
 ### Every component is releasable
 
-All sixteen components have a `build.sh`, so any of them can be released by
+All seventeen components have a `build.sh`, so any of them can be released by
 tag. The two file-overlay modules were brought into the same shape on
 2026-10-30; before that they had no `build.sh` and a tag naming one was
 rejected.
