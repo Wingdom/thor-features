@@ -98,7 +98,9 @@ is narrowest at a cardinal. The orange contour is where output reaches full
 scale. **Inside the blue everywhere** is the result being looked for.
 
 In the check phase the dashed green circle is full scale. Bars reaching past
-it pass; a short red bar is a direction that still cannot saturate.
+it pass; a short red bar is a direction that still cannot saturate. **Roll
+both sticks** — a direction you never swept is reported as unswept, not as a
+failure, but the check is only a pass when all 48 have been covered.
 
 Cardinals read about 100–103% in any sweep. That is the per-axis clamp — one
 axis at its limit, the other near zero — not headroom, and the cardinals were
@@ -176,13 +178,29 @@ thing to keep right.
 
 ## Notes on the device side
 
+- **The root shell runs with `--mount-master`, and it has to.** `su` inherits
+  the mount namespace of whoever starts it, and an Android app's namespace
+  hides every other package's data directory — on this device it shows two
+  entries under `/data/user_de/0` where a shell sees 223. Without the flag
+  AynParts does not merely look unreadable, it does not exist, so the
+  preference write is skipped, no error is raised, and the calibration
+  silently reverts at the next boot while everything on screen looks right.
+  Plain `su` is still used as a fallback, which keeps the capture and the node
+  write working.
 - The node is labelled `vendor_sysfs_joystick`, whose allowlist is narrow: it
   denies the shell domain but permits Magisk's, so real root reads and writes
   both `raw` and `calibration` without trouble. A permission error here is
   worth checking twice — assert `id -u` in the *same* shell first, because
-  MagiskSU intermittently hands back a non-root shell on this device, and a
-  multi-line string passed to `su -c` never reaches `su` at all.
+  MagiskSU intermittently hands back a non-root shell on this device (three
+  times in one two-hour session), and a multi-line string passed to `su -c`
+  never reaches `su` at all.
 - Every shell command this app runs is a single line of absolute paths, for
   the same two reasons.
 - A node readback is never treated as proof. That is what the check phase is
-  for.
+  for — and on the hardware it is what distinguishes "applied" from "applied
+  and actually in effect".
+- **The plots are drawn mirrored on X**, because raw +X is physically *left*
+  on this hardware and raw +Y is physically up. Measured, not assumed: at rest
+  `LX=138`, held fully right `LX=-1283`, held fully down `LY=-1273`. None of
+  it touches the calibration, which is computed and written entirely in raw
+  counts.
