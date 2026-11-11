@@ -2,7 +2,6 @@ package com.thorfeatures.stickcal;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.util.AttributeSet;
@@ -61,8 +60,19 @@ public final class GateView extends View {
     private VerifyMap verify;
     private boolean hasLive;
     private double liveX, liveY;
-    /** Scale for the live cursor in CAPTURE/RESULT: raw counts. */
-    private double liveScale = 1400;
+
+    /**
+     * The kernel's own nominal full range, and the plot's minimum scale.
+     *
+     * Normalising purely to the largest radius seen so far would rescale the
+     * picture on every sample early in a roll, so the gate would appear to
+     * fill the view from the first flick and the user could not see
+     * themselves pushing further out. Anchoring to the range the kernel
+     * defaults to - its untouched calibration is -1350:1350 - gives a stable
+     * frame that the measured gate grows into, and still expands if a unit
+     * reaches further than that.
+     */
+    private static final double NOMINAL_RANGE = 1350;
 
     public GateView(Context c) { this(c, null); }
 
@@ -90,7 +100,6 @@ public final class GateView extends View {
 
     public void setGate(GateMap g, GateSolver.Solution s) {
         gate = g; solution = s;
-        if (g != null && g.maxRadius() > 0) liveScale = g.maxRadius();
         invalidate();
     }
 
@@ -106,7 +115,6 @@ public final class GateView extends View {
 
     public void reset() {
         gate = null; solution = null; verify = null; hasLive = false;
-        liveScale = 1400;
         invalidate();
     }
 
@@ -146,12 +154,12 @@ public final class GateView extends View {
         if (gate == null || gate.maxRadius() <= 0) {
             text.setTextAlign(Paint.Align.CENTER);
             canvas.drawText("roll the stick", cx, cy, text);
-            drawCursor(canvas, cx, cy, r, liveScale);
+            drawCursor(canvas, cx, cy, r, NOMINAL_RANGE);
             return;
         }
 
         double[] radii = gate.bucketRadii();
-        double scale = gate.maxRadius();
+        double scale = Math.max(gate.maxRadius(), NOMINAL_RANGE);
 
         // The measured gate, as a closed polygon through the 24 bucket maxima.
         Path p = new Path();

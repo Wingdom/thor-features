@@ -222,6 +222,13 @@ public final class CalibrationActivity extends Activity implements RawStream.Lis
                 apply();
                 return;
             case VERIFY:
+                if (!verifyLeft.passed() || !verifyRight.passed()) {
+                    // Not blocked, but not glossed over either: a direction
+                    // that does not saturate is the original fault, and the
+                    // user is the one who decides whether to live with it.
+                    status.setText("finished with directions still under full scale"
+                            + " — Back to the review to raise the margin, or roll again");
+                }
                 phase = Phase.DONE;
                 break;
             case DONE:
@@ -306,6 +313,10 @@ public final class CalibrationActivity extends Activity implements RawStream.Lis
                 stopStream();
                 phase = Phase.REVIEW;
                 resolveFromCapture();
+                // Said here rather than in render(), which cannot tell a
+                // status line it should replace from one it should leave -
+                // the read's "found ..." line is still sitting there.
+                status.setText(Report.rest(rest));
                 break;
             default:
                 return;
@@ -613,7 +624,6 @@ public final class CalibrationActivity extends Activity implements RawStream.Lis
         if (phase == Phase.REVIEW || phase == Phase.DONE) {
             showSolution(solutionLeft, verdictLeft, tableLeft);
             showSolution(solutionRight, verdictRight, tableRight);
-            if (rest != null && status.getText().length() == 0) status.setText(Report.rest(rest));
             if (solutionLeft != null) {
                 gateViewLeft.setGate(gateLeft, solutionLeft);
                 gateViewRight.setGate(gateRight, solutionRight);
@@ -702,7 +712,8 @@ public final class CalibrationActivity extends Activity implements RawStream.Lis
             case REVIEW:      return getString(R.string.review);
             case VERIFY:      return getString(R.string.verify);
             case DONE:        return appliedValue == null
-                                     ? getString(R.string.review) : appliedValue;
+                                     ? getString(R.string.review)
+                                     : "Applied and stored: " + appliedValue;
             default:          return getString(R.string.intro);
         }
     }
