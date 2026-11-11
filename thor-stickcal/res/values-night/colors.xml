@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cal_surface">@android:color/system_neutral1_900</color>
+    <color name="cal_on_surface">@android:color/system_neutral1_50</color>
+    <color name="cal_on_surface_dim">@android:color/system_neutral2_200</color>
+</resources>

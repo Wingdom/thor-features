@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A stick's gate: an off-round ring with the stick at a diagonal, which is
+     the case this app exists to fix. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#FF4FC3F7"
+        android:strokeWidth="1.6"
+        android:fillColor="#00000000"
+        android:pathData="M12,2.6 C16.6,2.6 21.4,6.6 21.4,12 C21.4,17.4 16.6,21.4 12,21.4
+                          C7.4,21.4 2.6,17.8 2.6,12 C2.6,6.2 7.4,2.6 12,2.6 Z" />
+    <path
+        android:strokeColor="#FFFFA62B"
+        android:strokeWidth="1.4"
+        android:fillColor="#00000000"
+        android:pathData="M12,12 L18.4,5.6" />
+    <path
+        android:fillColor="#FFFFD54F"
+        android:pathData="M18.4,3.6 m-2.1,0 a2.1,2.1 0 1,0 4.2,0 a2.1,2.1 0 1,0 -4.2,0" />
+    <path
+        android:fillColor="#FF4FC3F7"
+        android:pathData="M12,12 m-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0" />
+</vector>

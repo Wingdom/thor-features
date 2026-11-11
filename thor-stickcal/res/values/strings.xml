@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thor Stick Cal</string>
+
+    <string name="start">Start</string>
+    <string name="back">Back</string>
+    <string name="next">Next</string>
+    <string name="apply">Apply</string>
+    <string name="finish">Finish</string>
+    <string name="close">Close</string>
+    <string name="redo">Redo</string>
+    <string name="restore">Restore original</string>
+    <string name="advanced">Advanced</string>
+
+    <string name="title_intro">Stick calibration</string>
+    <string name="title_rest_before">Hands off</string>
+    <string name="title_roll_left">Left stick</string>
+    <string name="title_roll_right">Right stick</string>
+    <string name="title_rest_after">Hands off again</string>
+    <string name="title_review">The result</string>
+    <string name="title_verify">Check it</string>
+    <string name="title_done">Done</string>
+
+    <!-- The intro says what this costs, because it does cost something and a
+         user who is surprised by it later will think it is a fault. -->
+    <string name="intro" formatted="false">This measures the shape of each stick\'s gate and works out
+        limits that reach full scale in every direction, including the diagonals.
+        \n\nThe gate is not round — about 84% on this hardware — so the sticks will
+        reach full output at roughly 85% of their physical travel. That is the price
+        of the diagonals working, and it is unavoidable on a gate this shape.
+        \n\nTakes about a minute. Nothing is written until you have seen the result.</string>
+
+    <string name="rest_before">Let go of both sticks and leave them alone.
+        Measuring where they rest, and how much they move on their own.</string>
+    <string name="roll_instruction">Roll the stick slowly all the way round, pressed
+        hard against the outside of its travel. Two or three laps. The marked sectors
+        are the ones still short.</string>
+    <string name="rest_after">Let go again. A stick does not return to quite where it
+        started, and the difference is what sets the deadzone.</string>
+    <string name="review">The orange contour is where output reaches full scale. Inside
+        the measured shape everywhere means every direction saturates.</string>
+    <string name="verify">Roll both sticks round again. These readings come from the
+        framework, the same numbers a game sees — a stored calibration that is not in
+        effect fails here.</string>
+
+    <string name="no_root">Root required. Add this app in Magisk → Superuser → +
+        (Magisk 31 never prompts), then reopen.</string>
+    <string name="no_node">The joystick node is missing — this is not an AYN Thor
+        running a kernel that exposes it.</string>
+    <string name="reading">Reading the current calibration…</string>
+    <string name="applying">Writing the calibration…</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material You from the platform's own dynamic palette, the same way
+         thor-screenpanel does it: the system_* resources are the real
+         wallpaper-derived colours on API 31+, so a plain platform app gets
+         themed without AppCompat, Material Components or Gradle. -->
+    <color name="cal_surface">@android:color/system_neutral1_50</color>
+    <color name="cal_on_surface">@android:color/system_neutral1_900</color>
+    <color name="cal_on_surface_dim">@android:color/system_neutral2_700</color>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- thor-stickcal - joystick calibration that accounts for the gate's shape.
+
+     LineageOS already ships a calibration wizard in AynParts
+     (org.lineageos.settings.ayn), and it cannot calibrate these sticks
+     correctly: its kernel interface is per-axis min:max:center:deadzone with
+     no radial term, and it records per-axis extremes from a freehand sweep.
+     The Thor's gate is only 84-86% round, so a stick calibrated to reach full
+     scale on all four cardinals MUST fall short at the diagonals. That broke
+     analogue movement in emulated games.
+
+     This app measures the gate instead and solves the limits so every
+     direction saturates. It holds no Android permissions: everything it
+     touches goes through `su`, and the one node it writes
+     (/sys/class/moorechip-joystick/joystick/calibration) is labelled
+     vendor_sysfs_joystick, which denies the shell domain but permits
+     u:r:magisk:s0. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.thorfeatures.stickcal">
+
+    <!-- The calibration is judged by what the framework reports, so the
+         verify phase needs gamepad motion events delivered to this activity.
+         Declared rather than required: a Thor always has the pad, and a
+         `required="true"` here would make the app uninstallable on anything
+         else for no gain. -->
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_stickcal"
+        android:allowBackup="false"
+        android:theme="@style/CalTheme">
+
+        <!-- Landscape only. The Thor is a landscape handheld, the two gate
+             plots sit side by side, and a wizard that reflowed mid-capture
+             would restart the activity and lose the sweep. -->
+        <activity
+            android:name=".CalibrationActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:screenOrientation="userLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
