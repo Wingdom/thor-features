@@ -101,14 +101,21 @@ signed with the throwaway dev key `build.sh` generates on demand, and are
 deliberately not installable as upgrades over a release build. Each APK's
 certificate is printed, so which key was used is never ambiguous.
 
-**`release.yml`** — on a `v*` tag. Same build, signed with the project release
-key, attached to a GitHub Release with a `SHA256SUMS` over every file.
+**`release.yml`** — on a `thor-<component>-v<version>` tag. It builds **only
+the tagged component**, signs it with the project release key, and attaches the
+result to a GitHub Release with a `SHA256SUMS` over every file.
 
-The release workflow pins the expected signing certificate and fails if any APK
-does not carry it, and asserts that exactly five APKs were produced. The
-dev-key fallback is silent by design, which makes a mis-signed release the
-failure mode worth guarding; a component dropping out of the build is caught by
-the same check.
+It pins the expected signing certificate and fails if the APK does not carry
+it, because `build.sh` falls back to a throwaway dev key silently so that forks
+can still build — which makes a mis-signed release the failure mode worth
+guarding. It also checks the APK's `versionName` against the tag, since that is
+what Obtainium compares.
+
+Nothing in it is per-component: the component is parsed out of the tag and
+everything else follows from the files on disk, so a new component needs no
+workflow change to be releasable. Adding one to this repo means adding a
+`build.sh` that declares a `VERSION` and writes
+`dist/<component>-v<VERSION>.<ext>` — nothing else.
 
 Every component has a `build.sh`, including the two pure file-overlay modules
 (`thor-sdcard-fsck` and `thor-wifi-kiwi-fw`). Those two have no compile step,
@@ -143,7 +150,7 @@ that installs cleanly and changes nothing.
 - **APKs target `targetSdk=37`** (Android 17). Play Protect on this device
   rejects installs targeting anything older with
   `INSTALL_FAILED_VERIFICATION_FAILURE`.
-- All five APKs are signed with one release key. An older build signed with the
+- All six APKs are signed with one release key. An older build signed with the
   per-app development keys **cannot be upgraded over** — Android refuses a
   signature change, so it must be uninstalled first.
 
