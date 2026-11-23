@@ -26,7 +26,7 @@ mkdir -p /data/adb/thor-fanctl
     MODE=$("$FANCTL" get)
     echo "persisted mode: $MODE"
     case "$MODE" in
-        quiet|performance) "$FANCTL" "$MODE" ;;
+        quiet|balanced|performance) "$FANCTL" "$MODE" ;;
         *) echo "nothing to apply" ;;
     esac
 } >> "$LOG" 2>&1
