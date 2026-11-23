@@ -25,6 +25,7 @@ own — it writes a calibration once and has nothing to do at boot.
 | **Joystick lighting** — light the stick rings while charging, or let them breathe. | `thor-stickfx` | `thor-stickfx-tile` |
 | **Move an app to the other screen** — one tap sends whatever you're using across. | `thor-screenmove` | `thor-screenmove-tile` |
 | **Per-game fan profiles** — pick a fan setting per game; it switches when you launch. | `thor-appwatch` | `thor-appprofiles` |
+| **OLED wash** — sweeps a band of noise down both screens while you're away, so static content doesn't sit on the same pixels. | `thor-oledwatch` | `thor-oledwash` |
 | **Stick calibration** — makes the sticks reach full tilt on the diagonals, so characters stop walking when you push diagonally. | — | `thor-stickcal` |
 
 Quick Settings tiles show the current setting at a glance, and tapping one opens
@@ -90,6 +91,9 @@ app. Do that for each one you installed:
 
 Each one should show a switch turned on when you're done.
 
+**Thor OLED Wash is not in that list on purpose** — it holds no permissions and needs no root. Only its companion module
+`thor-oledwatch`, which makes the wash automatic, needs Magisk.
+
 **5. Add the tiles.** Pull down Quick Settings, tap the edit (pencil) button,
 and drag in the tiles you installed.
 
@@ -114,6 +118,7 @@ releases:
 | AYN button panel | `^thor-screenpanel-v` |
 | Per-game fan profiles | `^thor-appprofiles-v` |
 | Stick calibration | `^thor-stickcal-v` |
+| OLED wash | `^thor-oledwash-v` |
 
 Obtainium calls this a regular-expression filter on releases; the exact wording
 of the field varies a little between versions.

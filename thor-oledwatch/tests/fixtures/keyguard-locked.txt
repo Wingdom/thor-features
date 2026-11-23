@@ -1,0 +1,6 @@
+# 
+# DERIVED from keyguard-unlocked.txt: mKeyguardShowing flipped. The wash must never run over a lock screen.
+  KeyguardController:
+    mKeyguardShowing=true
+    mAodShowing=false
+    mKeyguardGoingAway=false

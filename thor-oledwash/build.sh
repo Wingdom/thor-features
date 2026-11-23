@@ -58,6 +58,27 @@ javac --release 17 -nowarn -d out/test $SRCS "test/$PKG_PATH/TestMain.java" \
 java -cp out/test com.thorfeatures.oledwash.TestMain \
     || { echo "build aborted: unit tests failed"; exit 1; }
 
+# The manual path must keep working with no root, no Magisk and no module.
+# That is not a promise, it is a property, so assert it: these classes are
+# everything a Run now tap touches, and none of them may acquire a shell or a
+# root dependency. The idle trigger lives in the thor-oledwatch module, which
+# is where root belongs.
+MANUAL="MainActivity WashLauncher WashActivity WashView Displays DisplayChoice \
+        PanelRef WashPlan WashSession Noise Params Summary AutoWashActivity"
+for c in $MANUAL; do
+    f="src/$PKG_PATH/$c.java"
+    [ -f "$f" ] || { echo "missing: $f"; exit 1; }
+    # Strip comments first: these files discuss root in prose, and matching
+    # prose is how an assertion like this fails on correct code.
+    if sed -e 's|//.*||' -e 's|/\*|\n&|g' "$f" \
+         | grep -vE '^\s*\*' \
+         | grep -qE '\bRuntime\.|ProcessBuilder|"su"|/data/adb|exec\('; then
+        echo "  $c reaches for a shell or root, but it is on the manual path"
+        exit 1
+    fi
+done
+echo "  manual path holds no root dependency ($(echo $MANUAL | wc -w) classes)"
+
 echo
 echo "== resources =="
 "$BT/aapt2" compile --dir res -o out/res.zip || exit 1

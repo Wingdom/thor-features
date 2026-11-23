@@ -1,0 +1,6 @@
+# 
+# CAPTURED from the device 2026-11-23, unlocked.
+  KeyguardController:
+    mKeyguardShowing=false
+    mAodShowing=false
+    mKeyguardGoingAway=false
