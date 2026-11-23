@@ -317,6 +317,56 @@ public final class TestMain {
         WashSession.resetForTests();
         check("reset clears listeners", 0, WashSession.listenerCount());
         ok("reset clears running", !WashSession.isRunning());
+
+        regressionNoSession();
+    }
+
+    /**
+     * The 2026-11-23 defect, pinned.
+     *
+     * <p>A WashActivity launched by anything other than MainActivity -- which
+     * is exactly what the idle trigger's root {@code am start} does -- had no
+     * running session. {@code stop} was therefore a no-op, and because
+     * finishing was conditional on it, the wash could neither end by itself nor
+     * be dismissed: touch did nothing, and BACK was swallowed by a handler that
+     * returned true while taking no action. A black fullscreen Activity eating
+     * every input, recoverable only by force-stop.
+     *
+     * <p>Two things fix it and both are asserted here. {@code joinOrStart} means
+     * a panel forms its own session, and {@code stop} now reports whether it
+     * did anything, so a caller cannot silently make its own exit conditional
+     * on somebody else having started the wash.
+     */
+    private static void regressionNoSession() {
+        System.out.println("\n regression -- a wash launched with no session");
+
+        WashSession.resetForTests();
+
+        // This is the state a root `am start` lands in: nothing has started.
+        ok("nothing running to begin with", !WashSession.isRunning());
+        check("stop on a dead session reports that it did nothing",
+                false, WashSession.stop(WashSession.REASON_INPUT));
+
+        // A panel joining forms the session itself.
+        check("first panel begins the session", true, WashSession.joinOrStart());
+        ok("now running", WashSession.isRunning());
+
+        // The second panel joins the same one rather than restarting it.
+        check("second panel joins rather than restarts", false, WashSession.joinOrStart());
+        ok("still running", WashSession.isRunning());
+
+        Spy s = new Spy();
+        WashSession.register(s);
+        check("stop now reports that it ended a wash",
+                true, WashSession.stop(WashSession.REASON_COMPLETE));
+        check("and the panel was told", 1, s.calls);
+
+        // And it is startable again afterwards, which is what makes a repeating
+        // idle trigger possible at all.
+        check("a later wash can begin again", true, WashSession.joinOrStart());
+        check("reason cleared on the new session", null, WashSession.reason());
+
+        WashSession.resetForTests();
     }
 
     // ----------------------------------------------------- display choice ---

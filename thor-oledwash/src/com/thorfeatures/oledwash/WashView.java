@@ -26,11 +26,17 @@ public final class WashView extends View {
     /** Drop the label once the wash is nearly over, so it is not the last thing lit. */
     private static final long LABEL_HIDE_TAIL_MS = 400L;
 
+    /** Told once, when the last sweep has left the panel. */
+    public interface OnComplete {
+        void onWashComplete();
+    }
+
     private final int grain;
     private final long cycleMs;
     private final int cycles;
     private final double bandFraction;
     private final boolean showDiagnostics;
+    private final OnComplete onComplete;
 
     private final Paint bandPaint = new Paint();
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -47,13 +53,14 @@ public final class WashView extends View {
     private boolean reportedComplete = false;
 
     public WashView(Context ctx, double bandFraction, long cycleMs, int cycles,
-                    int grain, boolean showDiagnostics) {
+                    int grain, boolean showDiagnostics, OnComplete onComplete) {
         super(ctx);
         this.bandFraction = bandFraction;
         this.cycleMs = cycleMs;
         this.cycles = cycles;
         this.grain = Math.max(1, grain);
         this.showDiagnostics = showDiagnostics;
+        this.onComplete = onComplete;
 
         setBackgroundColor(Color.BLACK);
         // Nearest-neighbour. At grain > 1 each noise pixel covers a block, and
@@ -101,10 +108,13 @@ public final class WashView extends View {
         canvas.drawColor(Color.BLACK);
 
         if (plan.finishedAt(elapsedMs)) {
-            // Say so once. The Activity owns finishing; this view just reports.
+            // Say so once, to whoever is listening. This view deliberately does
+            // not reach for WashSession: the Activity owns ending the wash, and
+            // routing completion through a static that may not be running is
+            // what left a finished wash on screen with no way out.
             if (!reportedComplete) {
                 reportedComplete = true;
-                WashSession.stop(WashSession.REASON_COMPLETE);
+                if (onComplete != null) onComplete.onWashComplete();
             }
             return;
         }
