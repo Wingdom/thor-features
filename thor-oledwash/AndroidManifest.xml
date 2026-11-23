@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- thor-oledwash - an anti-image-retention wash for the Thor's two OLED panels.
+
+     AYN's stock ROM gained this in v1.0.0.360 (2026-01-13) as Settings ->
+     Thor Settings -> Advanced Settings -> OLED Screen Protection. LineageOS has
+     no equivalent, and neither does AynParts - checked, and this is the first
+     feature in this repository where looking at the ROM first did NOT remove
+     the work. See thor/findings/oled-screen-protection.md.
+
+     DRAW-ONLY BUILD. There is no idle trigger: nothing here runs unless
+     somebody presses Run now. The wash is the part that had to be seen before
+     it could be automated, because sweep speed cannot be chosen from the
+     arithmetic - it does not change how much drive each pixel gets per second.
+
+     It holds NO permissions at all. The drawing half needs none: a fullscreen
+     Activity in immersive mode covers the system bars, which an overlay window
+     provably cannot on this ROM. Root will be needed later, for the idle
+     signal only - `dumpsys power` requires android.permission.DUMP, which is
+     signature|privileged. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.thorfeatures.oledwash">
+
+    <!-- Declared, not required: the wash stops on stick and trigger motion, but
+         a device without a pad simply has fewer ways to interrupt it. -->
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_oledwash"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        android:theme="@style/WashTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:screenOrientation="userLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- resizeableActivity is load-bearing: without it the system refuses to
+             launch this onto a secondary display and says so in a toast.
+
+             nosensor keeps each panel in its own default orientation. A sensor
+             rotation mid-wash would reconfigure the Activity, restart the view
+             and reset the sweep.
+
+             excludeFromRecents + noHistory because this is a ten-second
+             interruption, not somewhere to come back to. -->
+        <activity
+            android:name=".WashActivity"
+            android:exported="false"
+            android:theme="@style/WashFullscreen"
+            android:resizeableActivity="true"
+            android:screenOrientation="nosensor"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="standard"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboard|keyboardHidden|navigation|uiMode" />
+
+    </application>
+</manifest>

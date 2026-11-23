@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thor OLED Wash</string>
+
+    <string name="intro">Sweeps a band of bright noise down each OLED panel, so
+        static content does not sit on the same pixels indefinitely. This build
+        runs only when you tap Run now — there is no idle trigger yet.\n\nIt
+        stops on any touch, button, stick or trigger. It never changes
+        brightness and never keeps the screen awake.</string>
+
+    <string name="label_speed">Sweep time</string>
+    <string name="label_band">Band height</string>
+    <string name="label_cycles">Sweeps</string>
+    <string name="label_grain">Noise grain</string>
+    <string name="label_screens">Screens</string>
+
+    <string name="screens_all">Both</string>
+    <string name="screens_primary">Top only</string>
+    <string name="screens_secondary">Bottom only</string>
+
+    <string name="run_now">Run now</string>
+
+    <string name="status_panels">Will wash %1$d of %2$d panels:</string>
+    <string name="status_none">No panel available to wash.</string>
+
+    <string name="wash_hint">Tap, or press anything, to stop</string>
+</resources>
