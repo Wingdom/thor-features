@@ -23,6 +23,9 @@ Install **`thor-oledwatch`**, the companion Magisk module. It watches for
 inactivity and starts a wash; the app still owns everything about what gets
 drawn. The module needs the app; the app never needs the module.
 
+**Not finished:** the screen for choosing the idle interval does not exist
+yet, so the module runs on its defaults until it does.
+
 Root is unavoidable for that half, for two independent reasons: `dumpsys power`
 is the only idle signal that sees gamepad input and it requires
 `android.permission.DUMP` (`signature|privileged`), and an app cannot start an

@@ -68,7 +68,9 @@ reader is needed.
 
 ## Configuring it
 
-`/data/adb/thor-oledwatch/config`, written by the app:
+`/data/adb/thor-oledwatch/config`. **Nothing writes this yet** — the app's
+settings screen for it is not built, so the defaults below are what runs and
+changing them means editing the file by hand:
 
 ```
 enabled=1
