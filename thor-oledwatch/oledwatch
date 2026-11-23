@@ -1,0 +1,323 @@
+#!/system/bin/sh
+# oledwatch - run the OLED wash after a stretch of inactivity.
+#
+# This module decides WHEN. The app (com.thorfeatures.oledwash) decides WHAT:
+# which panels, how tall the band, how fast it sweeps, when to stop. The only
+# coupling is one `am start`, and it points this way only -- the app never asks
+# whether this module exists, and works manually without it.
+#
+# Why a module and not something inside the app:
+#   The idle signal is `dumpsys power`, which needs android.permission.DUMP
+#   (signature|privileged), so it has to go through root either way. And an app
+#   cannot launch an Activity from the background without SYSTEM_ALERT_WINDOW
+#   or a visible window; a root `am start` is not subject to that at all. A
+#   foreground service would need a permanent notification and would still need
+#   root for the dumpsys, so it costs the notification and buys nothing.
+#
+# Why `dumpsys power` and not an evdev reader:
+#   Measured on hardware 2026-11-23: gamepad triggers and sticks DO reset
+#   lastUserActivityTime on this build (31 ms and 22 ms after injection, from a
+#   baseline climbing past 218 s). That was not a safe assumption -- Android
+#   does not always treat joystick events as user activity, and had it not,
+#   this would have dropped a bright wash over somebody mid-game. It does, so
+#   the framework's own counter is authoritative and no input reader is needed.
+#
+# Why the poll interval is computed and not fixed:
+#   Process spawns on this device are expensive enough to change what is being
+#   measured -- a per-item rescan elsewhere in this project took 14 minutes and
+#   heated the SoC enough to spin the fan up by itself. When the user is
+#   active, the next decision cannot possibly be due soon, so sleep until it
+#   roughly is.
+
+# ---------------------------------------------------------------- pure logic --
+# Everything above the LIB guard is host-testable with no device attached.
+
+# power_facts <dumpsys-power-file>
+#   Emits one line: "<wakefulness> <idle_ms> <screen_lock> <override>"
+#
+#   One awk pass. Reading these four with four greps would be four more
+#   processes per poll for no gain, and `dumpsys power` is 1405 lines on this
+#   device so each pass is not free.
+#
+#   screen_lock is 1 when a wake lock that holds the DISPLAY is held.
+#   PARTIAL_WAKE_LOCK deliberately does not count: audio playing with the
+#   screen idle is a real and common state on a handheld, and it is exactly
+#   when a wash is wanted rather than suppressed.
+power_facts() {
+    awk '
+        # Two leading spaces, and take the first: a bare "mWakefulness=1"
+        # appears further down and is a different encoding of the same thing.
+        /^  mWakefulness=/      { if (wake == "")  { w = $0; sub(/.*=/, "", w); wake = w } }
+        /^  mUserActivityTimeoutOverrideFromWindowManager=/ \
+                                { o = $0; sub(/.*=/, "", o); override = o }
+
+        /^Wake Locks:/          { inlocks = 1; next }
+        inlocks && /^[^ ]/      { inlocks = 0 }
+        inlocks && /_WAKE_LOCK/ { if ($0 !~ /PARTIAL_WAKE_LOCK/) screenlock = 1 }
+
+        # Anchored at column 0 so it cannot match the indented
+        # mLastUserActivityTime(excludingAttention), and "Time=" so it cannot
+        # match lastUserActivityTimeNoChangeLights. First one wins: later
+        # display groups repeat it.
+        /^lastUserActivityTime=/ {
+            if (idle == "") { i = $2; gsub(/[()]/, "", i); idle = i }
+        }
+
+        END {
+            if (wake == "")     wake = "unknown"
+            if (idle == "")     idle = -1
+            if (override == "") override = -1
+            printf "%s %s %d %s\n", wake, idle, screenlock + 0, override
+        }
+    ' "$1"
+}
+
+# keyguard_showing <dumpsys-activity-file>
+#   Emits "yes", "no", or "unknown" when the field is absent.
+#
+#   Absent must not read as unlocked. A parse that silently degrades to "go
+#   ahead" is how a wash ends up painted over a lock screen.
+keyguard_showing() {
+    v=$(awk '/mKeyguardShowing=/ { s = $0; sub(/.*mKeyguardShowing=/, "", s);
+                                   sub(/[^a-zA-Z].*/, "", s); print s; exit }' "$1")
+    case "$v" in
+        true)  echo yes ;;
+        false) echo no ;;
+        *)     echo unknown ;;
+    esac
+}
+
+# decide <enabled> <wakefulness> <idle_ms> <screen_lock> <override> \
+#        <keyguard> <threshold_ms> <since_last_fire_ms>
+#   Emits "wash", or "hold <reason>".
+#
+#   Reasons are stable strings; the tests and the status output both depend on
+#   them. Ordered most-fundamental first, so the reason reported is the one a
+#   person would give.
+decide() {
+    _enabled=$1; _wake=$2; _idle=$3; _lock=$4; _override=$5
+    _keyguard=$6; _threshold=$7; _since=$8
+
+    [ "$_enabled" = "1" ]   || { echo "hold disabled"; return 0; }
+    [ "$_wake" = "Awake" ]  || { echo "hold not-awake"; return 0; }
+
+    # Unknown is treated as locked. See keyguard_showing.
+    [ "$_keyguard" = "no" ] || { echo "hold locked"; return 0; }
+
+    [ "$_lock" = "0" ]      || { echo "hold screen-held"; return 0; }
+    [ "$_override" = "-1" ] || { echo "hold timeout-override"; return 0; }
+
+    # A negative idle means the field was missing. Refuse rather than treat an
+    # unreadable device as infinitely idle.
+    case "$_idle" in
+        ''|*[!0-9]*) echo "hold unreadable"; return 0 ;;
+    esac
+
+    [ "$_idle" -ge "$_threshold" ] || { echo "hold active"; return 0; }
+
+    # Having washed, wait a full threshold before washing again, so "every N
+    # minutes of inactivity" repeats at N rather than firing every poll for as
+    # long as the device is left alone.
+    [ "$_since" -ge "$_threshold" ] || { echo "hold cooldown"; return 0; }
+
+    echo wash
+}
+
+# clamp_interval <remaining_ms>
+#   Seconds to sleep before the next decision. Bounded so that a long wait does
+#   not become an unresponsive one, and a short one does not become a spin.
+clamp_interval() {
+    _rem=$1
+    case "$_rem" in ''|*[!0-9-]*) _rem=0 ;; esac
+    _s=$(( _rem / 1000 ))
+    [ "$_s" -lt 10 ] && _s=10
+    [ "$_s" -gt 60 ] && _s=60
+    echo "$_s"
+}
+
+# config_get <file> <key> <default>
+#   Reads key=value. A missing file, a missing key or a blank value all give
+#   the default, so a half-written config degrades to working defaults rather
+#   than to an empty variable used as a number.
+config_get() {
+    _v=""
+    [ -f "$1" ] && _v=$(awk -F= -v k="$2" '
+        $1 == k { v = $2; sub(/[ \t\r]+$/, "", v); print v; exit }' "$1")
+    [ -n "$_v" ] || _v=$3
+    echo "$_v"
+}
+
+[ -n "${OLEDWATCH_LIB:-}" ] && return 0
+
+# ------------------------------------------------------------------ runtime --
+
+STATE=${STATE:-/data/adb/thor-oledwatch}
+CONFIG=${CONFIG:-$STATE/config}
+LOG=${LOG:-$STATE/log}
+PIDFILE=${PIDFILE:-$STATE/pid}
+PKG=${PKG:-com.thorfeatures.oledwash}
+ACTIVITY=${ACTIVITY:-$PKG/.AutoWashActivity}
+LOG_MAX=${LOG_MAX:-400}
+
+mkdir -p "$STATE" 2>/dev/null
+
+# Bounded, like aynkeyd's. An unbounded log on /data from a daemon that runs
+# every boot is a slow leak nobody notices until the partition is full.
+logit() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG" 2>/dev/null
+    if [ -f "$LOG" ]; then
+        _n=$(wc -l < "$LOG" 2>/dev/null)
+        case "$_n" in ''|*[!0-9]*) _n=0 ;; esac
+        if [ "$_n" -gt "$LOG_MAX" ]; then
+            tail -n "$LOG_MAX" "$LOG" > "$LOG.trim" 2>/dev/null &&
+                mv "$LOG.trim" "$LOG" 2>/dev/null
+        fi
+    fi
+}
+
+uptime_ms() {
+    read -r _up _rest < /proc/uptime 2>/dev/null || _up=0
+    echo "$_up" | awk '{ printf "%d\n", $1 * 1000 }'
+}
+
+app_installed() {
+    pm path "$PKG" >/dev/null 2>&1
+}
+
+# Snapshot both sources to files, then parse. Reading each field straight from
+# a pipeline would re-run dumpsys per field.
+snapshot() {
+    dumpsys power > "$STATE/.power" 2>/dev/null
+    dumpsys activity activities > "$STATE/.activity" 2>/dev/null
+}
+
+read_config() {
+    ENABLED=$(config_get "$CONFIG" enabled 1)
+    IDLE_MINUTES=$(config_get "$CONFIG" idle_minutes 5)
+    BAND=$(config_get "$CONFIG" band 0.33)
+    CYCLE_MS=$(config_get "$CONFIG" cycle_ms 2500)
+    CYCLES=$(config_get "$CONFIG" cycles 4)
+    GRAIN=$(config_get "$CONFIG" grain 2)
+    TARGET=$(config_get "$CONFIG" target 0)
+    case "$IDLE_MINUTES" in ''|*[!0-9]*) IDLE_MINUTES=5 ;; esac
+    [ "$IDLE_MINUTES" -lt 1 ] && IDLE_MINUTES=1
+    THRESHOLD_MS=$(( IDLE_MINUTES * 60000 ))
+}
+
+start_wash() {
+    if ! app_installed; then
+        logit "hold app-missing ($PKG not installed)"
+        return 1
+    fi
+    if [ "${1:-}" = "--dry-run" ]; then
+        echo "would start: am start -n $ACTIVITY --ed band $BAND --el cycleMs $CYCLE_MS --ei cycles $CYCLES --ei grain $GRAIN --ei target $TARGET"
+        return 0
+    fi
+    # Not exported, and it does not need to be: root can start an internal
+    # Activity, verified on hardware 2026-11-23. So the app offers no surface
+    # to any other app on the device.
+    out=$(am start -n "$ACTIVITY" \
+            --ed band "$BAND" --el cycleMs "$CYCLE_MS" \
+            --ei cycles "$CYCLES" --ei grain "$GRAIN" \
+            --ei target "$TARGET" 2>&1)
+    case "$out" in
+        *Error*|*Exception*|*Denial*)
+            logit "wash FAILED: $out"
+            return 1 ;;
+    esac
+    logit "wash started (idle ${IDLE_MINUTES}m, band $BAND, ${CYCLE_MS}ms x $CYCLES, grain $GRAIN, target $TARGET)"
+    return 0
+}
+
+loop() {
+    logit "oledwatch started"
+    LAST_FIRE=-999999999
+    while :; do
+        read_config
+        snapshot
+        set -- $(power_facts "$STATE/.power")
+        WAKE=${1:-unknown}; IDLE=${2:--1}; LOCK=${3:-0}; OVERRIDE=${4:--1}
+        KEYGUARD=$(keyguard_showing "$STATE/.activity")
+        NOW=$(uptime_ms)
+        SINCE=$(( NOW - LAST_FIRE ))
+
+        VERDICT=$(decide "$ENABLED" "$WAKE" "$IDLE" "$LOCK" "$OVERRIDE" \
+                         "$KEYGUARD" "$THRESHOLD_MS" "$SINCE")
+        echo "$VERDICT $WAKE idle=$IDLE lock=$LOCK override=$OVERRIDE keyguard=$KEYGUARD" \
+            > "$STATE/.last" 2>/dev/null
+
+        if [ "$VERDICT" = "wash" ]; then
+            start_wash && LAST_FIRE=$(uptime_ms)
+            REMAIN=$THRESHOLD_MS
+        else
+            case "$IDLE" in
+                ''|*[!0-9]*) REMAIN=$THRESHOLD_MS ;;
+                *)           REMAIN=$(( THRESHOLD_MS - IDLE ))
+                             [ "$REMAIN" -lt 0 ] && REMAIN=0 ;;
+            esac
+        fi
+        sleep "$(clamp_interval "$REMAIN")"
+    done
+}
+
+running_pid() {
+    [ -f "$PIDFILE" ] || return 1
+    _p=$(cat "$PIDFILE" 2>/dev/null)
+    case "$_p" in ''|*[!0-9]*) return 1 ;; esac
+    [ -d "/proc/$_p" ] || return 1
+    echo "$_p"
+}
+
+case "${1:-status}" in
+    start)
+        if running_pid >/dev/null; then
+            echo "already running (pid $(running_pid))"
+            exit 0
+        fi
+        read_config
+        loop &
+        echo $! > "$PIDFILE"
+        echo "started (pid $(cat "$PIDFILE"))"
+        ;;
+    stop)
+        _p=$(running_pid) || { echo "not running"; exit 0; }
+        # Never `pkill -f oledwatch`: this script's own command line contains
+        # that pattern, so the call matches and kills itself. That has already
+        # cost this project three round trips.
+        kill "$_p" 2>/dev/null
+        rm -f "$PIDFILE"
+        logit "oledwatch stopped"
+        echo "stopped (was pid $_p)"
+        ;;
+    run)
+        read_config
+        start_wash "${2:-}"
+        ;;
+    decide)
+        # Ad-hoc inspection: evaluate right now and say what would happen.
+        read_config
+        snapshot
+        set -- $(power_facts "$STATE/.power")
+        echo "$(decide "$ENABLED" "${1:-unknown}" "${2:--1}" "${3:-0}" "${4:--1}" \
+                "$(keyguard_showing "$STATE/.activity")" "$THRESHOLD_MS" 999999999)"
+        ;;
+    log)
+        [ -f "$LOG" ] && cat "$LOG" || echo "(no log yet)"
+        ;;
+    status)
+        read_config
+        echo "oledwatch"
+        _p=$(running_pid) && echo "  daemon:     running (pid $_p)" \
+                          || echo "  daemon:     not running"
+        echo "  app:        $(app_installed && echo "$PKG installed" || echo "$PKG NOT INSTALLED")"
+        echo "  config:     $CONFIG"
+        echo "  enabled:    $ENABLED"
+        echo "  idle:       ${IDLE_MINUTES}m (${THRESHOLD_MS}ms)"
+        echo "  wash:       band $BAND, ${CYCLE_MS}ms x $CYCLES, grain $GRAIN, target $TARGET"
+        [ -f "$STATE/.last" ] && echo "  last check: $(cat "$STATE/.last")"
+        ;;
+    *)
+        echo "usage: oledwatch {status|start|stop|run [--dry-run]|decide|log}" >&2
+        exit 2
+        ;;
+esac

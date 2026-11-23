@@ -1,8 +1,6 @@
 package com.thorfeatures.oledwash;
 
-import android.app.ActivityOptions;
 import android.app.Activity;
-import android.content.Intent;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Display;
@@ -138,30 +136,11 @@ public final class MainActivity extends Activity {
     }
 
     private void launch() {
-        List<Integer> ids = DisplayChoice.pick(Displays.panels(this), target);
-        if (ids.isEmpty()) {
-            status.setText(R.string.status_none);
-            return;
-        }
-
-        // Not WashSession.start(): each WashActivity joins the session for
-        // itself, so a wash is properly formed however it was launched.
-        for (int id : ids) {
-            Intent i = new Intent(this, WashActivity.class);
-            i.putExtra(WashActivity.EXTRA_BAND, band);
-            i.putExtra(WashActivity.EXTRA_CYCLE_MS, cycleMs);
-            i.putExtra(WashActivity.EXTRA_CYCLES, cycles);
-            i.putExtra(WashActivity.EXTRA_GRAIN, grain);
-            i.putExtra(WashActivity.EXTRA_DIAGNOSTICS, true);
-            // MULTIPLE_TASK so the second panel gets its own instance rather
-            // than the system reusing the first one and moving it across.
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                    | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                    | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-            ActivityOptions opts = ActivityOptions.makeBasic();
-            opts.setLaunchDisplayId(id);
-            startActivity(i, opts.toBundle());
-        }
+        // One implementation of the fan-out, shared with AutoWashActivity, so
+        // the Run now button and the idle trigger cannot disagree about which
+        // panels get washed.
+        int n = WashLauncher.launch(this, band, cycleMs, cycles, grain, target);
+        if (n == 0) status.setText(R.string.status_none);
     }
 
     // ------------------------------------------------------------- widgets --

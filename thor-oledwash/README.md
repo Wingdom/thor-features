@@ -8,20 +8,26 @@ AYN's stock ROM gained this in **v1.0.0.360 (2026-01-13)** as *Settings → Thor
 Settings → Advanced Settings → OLED Screen Protection*. LineageOS has no
 equivalent and neither does AynParts.
 
-> **This is the draw-only build.** Nothing runs by itself. There is no idle
-> trigger yet — you press **Run now** and watch. That is deliberate: sweep speed
-> cannot be chosen from the arithmetic, so it had to be looked at on the device
-> before anything was allowed to start on its own.
-
 ## Requires
 
-An AYN Thor running LineageOS 24. **No Magisk, no root, no permissions** — this
-build holds none at all, and the Superuser step the other apps need does not
-apply to it.
+**Nothing.** No Magisk, no root, no permissions — this app holds none at all,
+and the Superuser step the other apps in this repository need does not apply to
+it. Press **Run now** and both panels wash.
 
-Root will be needed later, for the idle trigger only: `dumpsys power` is the
-idle signal and it requires `android.permission.DUMP`, which is
-`signature|privileged`.
+That is a property rather than an accident: the build refuses to package if
+anything on the manual path acquires a shell or a root dependency.
+
+### To have it run by itself
+
+Install **`thor-oledwatch`**, the companion Magisk module. It watches for
+inactivity and starts a wash; the app still owns everything about what gets
+drawn. The module needs the app; the app never needs the module.
+
+Root is unavoidable for that half, for two independent reasons: `dumpsys power`
+is the only idle signal that sees gamepad input and it requires
+`android.permission.DUMP` (`signature|privileged`), and an app cannot start an
+Activity from the background without `SYSTEM_ALERT_WINDOW` or a visible window
+— a root `am start` is not subject to that at all.
 
 ## What it draws
 

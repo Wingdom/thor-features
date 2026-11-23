@@ -63,5 +63,22 @@
             android:launchMode="standard"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboard|keyboardHidden|navigation|uiMode" />
 
+        <!-- The door the idle trigger comes through. NOT exported: root can
+             start an internal Activity, verified on hardware, so there is no
+             reason to let any other app on the device throw a wash over
+             whatever you were doing.
+
+             NoDisplay because it draws nothing: it picks the panels, starts
+             a wash on each and finishes. Such an Activity must finish before
+             onResume, which onCreate does. -->
+        <activity
+            android:name=".AutoWashActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance" />
+
     </application>
 </manifest>
