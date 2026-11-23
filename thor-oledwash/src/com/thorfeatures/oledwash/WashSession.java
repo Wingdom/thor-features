@@ -41,6 +41,26 @@ public final class WashSession {
         reason = null;
     }
 
+    /**
+     * Join the running wash, or begin one if there is not already.
+     *
+     * <p>Every panel's Activity calls this for itself, so that a wash is
+     * properly formed however it was launched. The alternative -- having
+     * whoever launches the wash call {@link #start} first -- was the original
+     * design and it was wrong: a {@code WashActivity} started any other way,
+     * which is precisely what a root {@code am start} does, then had no running
+     * session, so {@link #stop} was a no-op and the wash could neither finish
+     * nor be dismissed. See the scratchpad entry for 2026-11-23.
+     *
+     * @return true if this call began the session rather than joining one
+     */
+    public static synchronized boolean joinOrStart() {
+        if (running) return false;
+        running = true;
+        reason = null;
+        return true;
+    }
+
     public static synchronized boolean isRunning() {
         return running;
     }
@@ -66,15 +86,23 @@ public final class WashSession {
      * End the wash. The first call wins and later ones are ignored, so the
      * recorded reason is the thing that actually stopped it rather than
      * whichever panel finished unwinding last.
+     *
+     * <p><b>Returning false does not excuse a caller from ending itself.</b>
+     * This tells the <i>other</i> panels to stop; an Activity finishing itself
+     * must not be conditional on it, which is what made the no-session case
+     * unrecoverable.
+     *
+     * @return true if this call ended a running wash
      */
-    public static synchronized void stop(String why) {
-        if (!running) return;
+    public static synchronized boolean stop(String why) {
+        if (!running) return false;
         running = false;
         reason = why;
         // Copy: a listener is very likely to unregister itself from inside this.
         for (Listener l : new ArrayList<>(LISTENERS)) {
             l.onWashStopped(why);
         }
+        return true;
     }
 
     /** Test seam only. Drops every listener and clears the state. */

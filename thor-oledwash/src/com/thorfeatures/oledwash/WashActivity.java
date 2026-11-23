@@ -54,11 +54,29 @@ public final class WashActivity extends Activity implements WashSession.Listener
         int grain = getIntent().getIntExtra(EXTRA_GRAIN, Params.DEFAULT_GRAIN);
         boolean diag = getIntent().getBooleanExtra(EXTRA_DIAGNOSTICS, true);
 
-        view = new WashView(this, band, cycleMs, cycles, grain, diag);
+        view = new WashView(this, band, cycleMs, cycles, grain, diag,
+                () -> endWash(WashSession.REASON_COMPLETE));
         setContentView(view);
         goImmersive();
 
+        // Join first, then register. A wash started by anything other than
+        // MainActivity -- a root `am start`, which is exactly how the idle
+        // trigger will do it -- would otherwise have no running session.
+        WashSession.joinOrStart();
         WashSession.register(this);
+    }
+
+    /**
+     * End the wash: tell the other panels, and finish this one regardless.
+     *
+     * <p>The second half is not belt-and-braces, it is the fix. Finishing used
+     * to be conditional on {@link WashSession#stop} having something to stop,
+     * so a wash with no session swallowed every input and could not be
+     * dismissed at all.
+     */
+    private void endWash(String reason) {
+        WashSession.stop(reason);
+        finish();
     }
 
     private void goImmersive() {
@@ -82,20 +100,20 @@ public final class WashActivity extends Activity implements WashSession.Listener
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-        WashSession.stop(WashSession.REASON_INPUT);
+        endWash(WashSession.REASON_INPUT);
         return true;
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent e) {
-        WashSession.stop(WashSession.REASON_INPUT);
+        endWash(WashSession.REASON_INPUT);
         return true;
     }
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent e) {
         if (isDeliberateStickMotion(e)) {
-            WashSession.stop(WashSession.REASON_INPUT);
+            endWash(WashSession.REASON_INPUT);
             return true;
         }
         return super.onGenericMotionEvent(e);

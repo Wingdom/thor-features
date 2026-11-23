@@ -144,7 +144,8 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        WashSession.start();
+        // Not WashSession.start(): each WashActivity joins the session for
+        // itself, so a wash is properly formed however it was launched.
         for (int id : ids) {
             Intent i = new Intent(this, WashActivity.class);
             i.putExtra(WashActivity.EXTRA_BAND, band);
