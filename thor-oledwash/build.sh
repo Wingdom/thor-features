@@ -80,6 +80,28 @@ for c in $MANUAL; do
 done
 echo "  manual path holds no root dependency ($(echo $MANUAL | wc -w) classes)"
 
+# `--` is illegal inside an XML comment, and aapt2 reports it as "not
+# well-formed (invalid token)" with a line number pointing at the comment
+# rather than at the thing that is wrong. That has cost two builds here, both
+# times from prose using an em-dash-as-two-hyphens. Catch it with a message
+# that says what it actually is.
+BADXML=$(find res -name '*.xml' -print0 2>/dev/null \
+         | xargs -0 -r awk '
+             /<!--/ { inc = 1 }
+             inc {
+                 line = $0
+                 sub(/.*<!--/, "", line)
+                 sub(/-->.*/, "", line)
+                 if (line ~ /--/) { print FILENAME ":" FNR; inc = 0; nextfile }
+             }
+             /-->/ { inc = 0 }
+         ')
+if [ -n "$BADXML" ]; then
+    echo "  '--' inside an XML comment (illegal, aapt2 will call it invalid token):"
+    echo "$BADXML" | sed 's/^/    /'
+    exit 1
+fi
+
 echo
 echo "== resources =="
 "$BT/aapt2" compile --dir res -o out/res.zip || exit 1

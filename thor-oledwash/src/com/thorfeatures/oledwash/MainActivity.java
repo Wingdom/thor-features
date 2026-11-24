@@ -277,7 +277,7 @@ public final class MainActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(label);
         t.setTextColor(getColor(R.color.label));
-        t.setTextSize(13f);
+        t.setTextSize(14f);
         row.addView(t);
 
         LinearLayout buttons = new LinearLayout(this);
@@ -287,15 +287,27 @@ public final class MainActivity extends Activity {
             Button b = new Button(this);
             b.setText(options[i]);
             b.setAllCaps(false);
-            b.setTextSize(14f);
+            b.setTextSize(15f);
             b.setMinWidth(0);
             b.setMinimumWidth(0);
-            b.setPadding(dp(10), dp(4), dp(10), dp(4));
+            // 48dp is the Material minimum touch target. Clearing the stock
+            // Button minimum without setting one back left these at 40dp,
+            // which reads fine and is a worse thing to hit.
+            b.setMinHeight(dp(48));
+            b.setMinimumHeight(dp(48));
+            // A custom background on a Button keeps the stock elevation
+            // animation, which lifts and shadows a shape that is meant to be
+            // flat. Drop it.
+            b.setStateListAnimator(null);
+            b.setPadding(dp(12), dp(10), dp(12), dp(10));
             if (i == selected) {
+                b.setBackgroundResource(R.drawable.btn_selected);
                 b.setTypeface(null, Typeface.BOLD);
-                b.setTextColor(getColor(R.color.selected));
+                b.setTextColor(getColor(R.color.selected_text));
             } else {
-                b.setTextColor(getColor(R.color.unselected));
+                b.setBackgroundResource(R.drawable.btn_unselected);
+                b.setTypeface(null, Typeface.NORMAL);
+                b.setTextColor(getColor(R.color.unselected_text));
             }
             b.setOnClickListener(v -> pick.on(index));
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
@@ -311,7 +323,7 @@ public final class MainActivity extends Activity {
     private TextView heading(String s) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(22f);
+        t.setTextSize(24f);
         t.setTypeface(null, Typeface.BOLD);
         t.setTextColor(getColor(R.color.heading));
         t.setGravity(Gravity.START);
@@ -321,7 +333,7 @@ public final class MainActivity extends Activity {
     private TextView subheading(String s) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(16f);
+        t.setTextSize(18f);
         t.setTypeface(null, Typeface.BOLD);
         t.setTextColor(getColor(R.color.heading));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -334,7 +346,8 @@ public final class MainActivity extends Activity {
     private TextView body(String s) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(13f);
+        t.setTextSize(15f);
+        t.setLineSpacing(dp(3), 1.0f);
         t.setTextColor(getColor(R.color.body));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);

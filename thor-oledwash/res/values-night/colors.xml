@@ -1,11 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Dark by default matters a little more here than usual: this is an app about
-     not lighting pixels unnecessarily, and it runs on OLED. -->
+     not lighting pixels unnecessarily, and it runs on OLED. Same measured
+     scheme as the light theme, inverted; worst pair 6.76:1.
+
+     The accent is deliberately well short of a saturated mint. A vivid
+     green filling a chip on a black OLED at high brightness is harsh to
+     look at, and on this panel that is not a figure of speech: the
+     emitted light is what the eye objects to, so the fix is lower
+     saturation AND lower lightness, not hue. -->
 <resources>
     <color name="background">#FF000000</color>
     <color name="heading">#FFF2F2F2</color>
-    <color name="body">#FFC4C4C4</color>
-    <color name="label">#FF8A8A8A</color>
-    <color name="selected">#FF4ADE9B</color>
-    <color name="unselected">#FF888888</color>
+    <color name="body">#FFD4D4D4</color>
+    <color name="label">#FFA0A0A0</color>
+
+    <!-- The fill is light here and the text on it dark, which is the inverse of
+         the light theme and the reason the pair stays readable in both. -->
+    <color name="selected_fill">#FF5DBC91</color>
+    <color name="selected_text">#FF06291C</color>
+    <color name="unselected_text">#FFE6E6E6</color>
+    <color name="outline">#FF4A4A4A</color>
 </resources>

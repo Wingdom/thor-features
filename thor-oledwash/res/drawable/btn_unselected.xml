@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Everything else: outlined, on the page background rather than on a grey
+     chip. Text sits on the page colour, which is where the contrast comes
+     from: the old version put grey text on a grey button at 2.99:1. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="1dp" android:color="@color/outline" />
+    <corners android:radius="10dp" />
+</shape>
