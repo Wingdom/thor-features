@@ -18,7 +18,10 @@ echo "  apk: $APK"
 
 echo "== prerequisites =="
 for cmd in screenblank screenmove aynkeyd; do
-    if adb shell "su -c 'which $cmd'" </dev/null 2>/dev/null | grep -q .; then
+    # Buffer the output: `| grep -q .` quits on the very first line, adb dies
+    # of SIGPIPE, and pipefail reports the pipeline as failed -- which reads
+    # here as "command missing" and aborts an install that should proceed.
+    if grep -q . <<<"$(adb shell "su -c 'which $cmd'" </dev/null 2>/dev/null)"; then
         echo "  ok      $cmd"
     else
         echo "  MISSING $cmd - install its module first"

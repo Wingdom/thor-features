@@ -71,9 +71,11 @@ for c in $MANUAL; do
     [ -f "$f" ] || { echo "missing: $f"; exit 1; }
     # Strip comments first: these files discuss root in prose, and matching
     # prose is how an assertion like this fails on correct code.
-    if sed -e 's|//.*||' -e 's|/\*|\n&|g' "$f" \
-         | grep -vE '^\s*\*' \
-         | grep -qE '\bRuntime\.|ProcessBuilder|"su"|/data/adb|exec\('; then
+    # Buffer before matching: `| grep -q` exits at the first hit, the sed dies
+    # of SIGPIPE, and pipefail turns that into a pipeline failure -- which this
+    # `if` would read as "no root reference found" and let the build through.
+    if grep -qE '\bRuntime\.|ProcessBuilder|"su"|/data/adb|exec\(' \
+         <<<"$(sed -e 's|//.*||' -e 's|/\*|\n&|g' "$f" | grep -vE '^\s*\*')"; then
         echo "  $c reaches for a shell or root, but it is on the manual path"
         exit 1
     fi

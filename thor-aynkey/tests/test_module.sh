@@ -118,26 +118,32 @@ check "no log path points into the repository" "" \
 # 2s forever.
 check "the cap appears once as an assignment" "1" \
       "$(grep -cE '^LOG_MAX=' aynkeyd)"
+# Buffer the stripped source once. `producer | grep -q` is a SIGPIPE race
+# under pipefail: grep -q exits at the first match, the producer dies with 141,
+# and pipefail promotes that to the pipeline's status -- so a match that WAS
+# found reports as not found. See tests/test_no_sigpipe_pipelines.sh.
+src=$(sed 's/#.*//' aynkeyd)
 check "something actually rotates the log" "yes" \
-      "$(sed 's/#.*//' aynkeyd | grep -qE 'mv +-f +"\$LOGFILE"' && echo yes || echo no)"
+      "$(grep -qE 'mv +-f +"\$LOGFILE"' <<<"$src" && echo yes || echo no)"
 
 # --- the traps ---------------------------------------------------------------
 # The whole point of the change: the next death must say what killed it. All
 # four catchable signals, plus EXIT for the case no signal explains.
 for sig in TERM INT HUP QUIT; do
     check "SIG$sig is trapped" "yes" \
-          "$(sed 's/#.*//' aynkeyd | grep -qE "trap .* $sig\$" && echo yes || echo no)"
+          "$(grep -qE "trap .* $sig\$" <<<"$src" && echo yes || echo no)"
 done
 check "EXIT is trapped" "yes" \
-      "$(sed 's/#.*//' aynkeyd | grep -qE 'trap .* EXIT$' && echo yes || echo no)"
+      "$(grep -qE 'trap .* EXIT$' <<<"$src" && echo yes || echo no)"
 
 # Traps must be installed only in the foreground daemon. A plain `aynkeyd
 # status` that appended an exit line would corrupt the one record of a death.
 check "install_traps is called exactly once" "1" \
-      "$(sed 's/#.*//' aynkeyd | grep -cE '^ *install_traps$')"
+      "$(grep -cE '^ *install_traps$' <<<"$src")"
 check "and it is inside the --foreground branch" "yes" \
-      "$(awk '/if \[ "\$\{1:-\}" = "--foreground" \]/,/^    fi$/' aynkeyd \
-         | grep -q install_traps && echo yes || echo no)"
+      "$(grep -q install_traps \
+           <<<"$(awk '/if \[ "\$\{1:-\}" = "--foreground" \]/,/^    fi$/' aynkeyd)" \
+         && echo yes || echo no)"
 
 # --- uninstall leaves the log ------------------------------------------------
 # Deliberate, and the same reasoning as action.sh: if the module is being

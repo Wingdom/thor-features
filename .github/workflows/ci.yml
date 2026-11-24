@@ -60,6 +60,13 @@ jobs:
           test -f "$SDK/platforms/android-37.0/android.jar"
           echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
 
+      # Repo-wide invariant, so it runs once here rather than from any
+      # component's build.sh -- release.yml builds a single tagged component
+      # and must not depend on the rest of the tree. Cheap, and it fails before
+      # the 50-second build so a reintroduced race is the first thing reported.
+      - name: Check for SIGPIPE-racy pipelines
+        run: ./tests/test_no_sigpipe_pipelines.sh
+
       - name: Build everything and run all tests
         run: |
           set -uo pipefail

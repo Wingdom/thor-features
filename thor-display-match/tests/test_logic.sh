@@ -23,22 +23,23 @@ XML
 
 OUT=$($DM make-xml "$STOCK" local:111)
 
-echo "$OUT" | grep -q 'name="local:111"' \
+grep -q 'name="local:111"' <<<"$OUT" \
   && ok "inserts the primary display entry" || no "inserts the primary display entry"
 
-echo "$OUT" | grep -A1 'name="local:111"' | grep -q 'ignoreOrientationRequest="true"' \
+ENTRY=$(grep -A1 'name="local:111"' <<<"$OUT")
+grep -q 'ignoreOrientationRequest="true"' <<<"$ENTRY" \
   && ok "entry carries ignoreOrientationRequest=true" \
   || no "entry carries ignoreOrientationRequest=true"
 
-echo "$OUT" | grep -q 'name="local:222"' \
+grep -q 'name="local:222"' <<<"$OUT" \
   && ok "preserves the ROM's existing secondary entry" \
   || no "preserves the ROM's existing secondary entry"
 
-echo "$OUT" | grep -q 'shouldShowIme="true"' \
+grep -q 'shouldShowIme="true"' <<<"$OUT" \
   && ok "preserves the secondary entry's attributes" \
   || no "preserves the secondary entry's attributes"
 
-echo "$OUT" | grep -q '<config identifier="0" />' \
+grep -q '<config identifier="0" />' <<<"$OUT" \
   && ok "preserves the config element" || no "preserves the config element"
 
 # Insertion must land INSIDE the root element.
@@ -79,10 +80,10 @@ $DM make-xml "$T/bad.xml" local:111 >/dev/null 2>&1 \
 # Against the real captured ROM file.
 if [ -f tests/fixtures/vendor-display_settings.xml ]; then
   R=$($DM make-xml tests/fixtures/vendor-display_settings.xml local:4630946441858561667)
-  echo "$R" | grep -q 'name="local:4630946482288158084"' \
+  grep -q 'name="local:4630946482288158084"' <<<"$R" \
     && ok "real ROM file: secondary entry preserved" \
     || no "real ROM file: secondary entry preserved"
-  echo "$R" | grep -q 'name="local:4630946441858561667"' \
+  grep -q 'name="local:4630946441858561667"' <<<"$R" \
     && ok "real ROM file: primary entry added" \
     || no "real ROM file: primary entry added"
 fi

@@ -82,7 +82,7 @@ T2=$(mktemp -d); trap 'rm -rf "$T" "$T2"' EXIT
 cp "$T/stock.xml" "$T2/stock.xml"; cp "$T/dump.txt" "$T2/dump.txt"
 mkstub "$T2" sunfish "$T2/dump.txt"; mkdir -p "$T2/mod/system/bin"; cp display-match "$T2/mod/system/bin/"
 OUT=$(runcustomize "$T2"); RC=$?
-{ [ $RC -ne 0 ] && echo "$OUT" | grep -qi "not an odin2thor"; } \
+{ [ $RC -ne 0 ] && grep -qi "not an odin2thor" <<<"$OUT"; } \
   && ok "aborts on a non-odin2thor device" || no "aborts on a non-odin2thor device (rc=$RC)"
 
 # missing stock file must abort
@@ -112,7 +112,7 @@ cp "$T/dump.txt" "$T5/dump.txt"; cp "$T/stock.xml" "$T5/stock.xml"
 mkstub "$T5" odin2thor "$T5/dump.txt"; mkdir -p "$T5/mod/system/bin"; cp display-match "$T5/mod/system/bin/"
 : > "$T5/dataoverride"
 OUT=$(runcustomize "$T5"); RC=$?
-{ [ $RC -eq 0 ] && echo "$OUT" | grep -qi "OVERRIDES this module"; } \
+{ [ $RC -eq 0 ] && grep -qi "OVERRIDES this module" <<<"$OUT"; } \
   && ok "warns when /data override would mask the module" \
   || no "warns when /data override would mask the module"
 
@@ -149,7 +149,7 @@ mkstub "$T7" odin2thor "$T7/dump.txt"; mkdir -p "$T7/mod/system/bin" "$T7/state"
 cp display-match "$T7/mod/system/bin/"; cp "$T6/state/stock.xml" "$T7/state/stock.xml"
 echo "rom_build=1700000000" > "$T7/state/install.info"
 OUT=$(runcustomize "$T7"); RC=$?
-{ [ $RC -ne 0 ] && echo "$OUT" | grep -qi "ROM has changed"; } \
+{ [ $RC -ne 0 ] && grep -qi "ROM has changed" <<<"$OUT"; } \
   && ok "refuses to reapply a stale overlay after a ROM update" \
   || no "refuses to reapply a stale overlay after a ROM update (rc=$RC)"
 
@@ -163,7 +163,7 @@ OUT=$(PATH="$T8/bin:$PATH" CUSTOMIZE="$PWD/magisk/customize.sh" MODPATH="$T8/mod
   THOR_DM_DATA_OVERRIDE="$T8/none" THOR_DM_MODDIR="$T8/moddir" \
   sh -c 'ui_print(){ echo "UI: $*"; }; abort(){ echo "ABORT: $*"; exit 9; };
          set_perm_recursive(){ :; }; set_perm(){ :; }; . "$CUSTOMIZE"' 2>&1); RC=$?
-{ [ $RC -ne 0 ] && echo "$OUT" | grep -qi "under our own mount"; } \
+{ [ $RC -ne 0 ] && grep -qi "under our own mount" <<<"$OUT"; } \
   && ok "refuses when mounted with no pristine copy" \
   || no "refuses when mounted with no pristine copy (rc=$RC)"
 
@@ -186,7 +186,7 @@ printf '#!/bin/sh\nexit 0\n' > "$R/bin/wm"; chmod 755 "$R/bin/wm"
 OUT=$(PATH="$R/bin:$PATH" THOR_DM_STATE="$R/state" THOR_DM_DATA_OVERRIDE="$R/override" \
   sh ./display-match revert 2>&1)
 [ -f "$R/override" ] && no "revert removes the /data override" || ok "revert removes the /data override"
-echo "$OUT" | grep -qi "reboot" && ok "revert tells the user to reboot" \
+grep -qi "reboot" <<<"$OUT" && ok "revert tells the user to reboot" \
   || no "revert tells the user to reboot"
 rm -rf "$R"
 
