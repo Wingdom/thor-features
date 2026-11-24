@@ -51,6 +51,33 @@ No app, nothing to configure. Install and forget.
 One older module is kept for reference only and you should skip it:
 `thor-display-match`.
 
+### How the OLED wash works
+
+OLED screens don't love showing the same thing for hours. A launcher, a status
+bar, a paused game — leave any of them up long enough and they can leave a faint
+ghost behind. The wash breaks that up: it sweeps a bright band of static down
+each screen for about ten seconds, so no pixel spends all day showing the same
+thing.
+
+It comes in two halves, and the first works on its own:
+
+| | What it does |
+|---|---|
+| **Thor OLED Wash** (app) | Does the washing. Open it, press **Run now**, and both screens wash. It needs no root — the only app here that doesn't. |
+| **`thor-oledwatch`** (module) | Does the waiting. Starts a wash for you once you've left the device alone. |
+
+With just the app, washing is something you do. Add the module and it becomes
+something that happens.
+
+In the app, under **Run by itself**, you pick how long to leave it before a wash
+— 1 to 30 minutes — and whether it runs at all. If the module isn't installed,
+the app tells you so rather than pretending the switch does something.
+
+**It stays out of your way.** A wash stops the moment you touch either screen,
+press a button, or move a stick or trigger. It won't start while the device is
+locked, while the screen is off, or while something is holding the screen on,
+like a video. It never changes your brightness and never wakes the device.
+
 ---
 
 ## Installing
