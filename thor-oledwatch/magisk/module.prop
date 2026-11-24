@@ -1,6 +1,6 @@
 id=thor-oledwatch
 name=Thor OLED wash scheduler (oledwatch)
-version=v0.1.2
-versionCode=102
+version=v0.1.3
+versionCode=103
 author=local
 description=Runs the OLED wash after a stretch of inactivity. Decides only WHEN; the Thor OLED Wash app decides what to draw and when to stop, and works on its own without this module. Fires when the screen is on, the device is UNLOCKED, no app is holding the screen up, and there has been no input for the configured time - gamepad sticks and triggers count, which was measured rather than assumed. Never wakes the device, never holds a wakelock, never changes brightness. Writes no hardware node and keeps no state outside /data/adb/thor-oledwatch, so disabling this module restores stock behaviour with nothing to put back. Requires the Thor OLED Wash app.
