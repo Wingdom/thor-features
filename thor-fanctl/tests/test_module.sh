@@ -47,6 +47,23 @@ if awk '/capture --force/{c=NR} /fanctl" "\$MODE"|FANCTL" "\$MODE/{a=NR} END{exi
   ok "service.sh captures BEFORE applying"
 else bad "service.sh captures BEFORE applying"; fi
 
+# REGRESSION GUARD: every non-default tier fanctl accepts must be re-applied at
+# boot. capture --force has just reset the trips to stock, so a tier missing
+# from this case boots on stock while `fanctl get` still reports it. balanced
+# was once missing here.
+tiers=$(sed -n 's/^ *case "\$mode" in \([a-z|]*\)) ;; \*) die "unknown mode.*/\1/p' "$HERE/../fanctl" \
+        | tr '|' '\n' | grep -vx default)
+applied=$(grep -E '^ *[a-z|]+\) "\$FANCTL" "\$MODE"' "$M/service.sh" | sed 's/).*//; s/^ *//')
+if [ -z "$tiers" ]; then
+  bad "service.sh re-applies every tier at boot" "could not read fanctl's mode list"
+else
+  for t in $tiers; do
+    printf '%s\n' "$applied" | tr '|' '\n' | grep -qx "$t" \
+      && ok "service.sh re-applies $t at boot" \
+      || bad "service.sh re-applies $t at boot" "boot case is '$applied'"
+  done
+fi
+
 # the module must never write pwm1 or cur_state directly
 if grep -rnE '>\s*/sys/class/hwmon/hwmon0/pwm1|>\s*.*cooling_device.*cur_state' "$M" >/dev/null 2>&1; then
   bad "module never writes pwm1 or cur_state" "$(grep -rnE '>\s*/sys/class/hwmon/hwmon0/pwm1|cur_state' "$M" | head -2)"
