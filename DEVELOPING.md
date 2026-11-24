@@ -79,6 +79,30 @@ Counted by running each suite, not by addition: `tests/test_tile_root_timing.sh`
 is shared, so all three tile builds run it and a naive sum triple-counts its 6
 assertions.
 
+`tests/test_no_sigpipe_pipelines.sh` is repo-wide rather than per-component, so
+**CI runs it directly and no `build.sh` does** — `release.yml` builds a single
+tagged component, and a component's build must not assert on the rest of the
+tree. Run it by hand before opening a PR that adds a test:
+
+```sh
+./tests/test_no_sigpipe_pipelines.sh
+```
+
+It bans one thing: a pipeline ending in `grep -q` inside a script that sets
+`pipefail`. `grep -q` quits at the first match, the producer dies of SIGPIPE
+with 141, and `pipefail` makes that the pipeline's status — so an assertion
+that *found* its match reports that it did not. Measured 2026-11-25: 1 wrong
+answer in 400 with `pipefail`, 0 in 400 without, across ~60 such assertions.
+Buffer the producer instead, which is what `thor-screenmove`'s suite already
+did:
+
+```sh
+out=$(producer); grep -q PAT <<<"$out"
+```
+
+Never reach for `set +o pipefail` to silence it; pipefail catches real failures
+in these same scripts.
+
 Two components additionally run checks **on the device itself**, because the
 host suite runs under bash while the modules run under Android's mksh:
 `fanctl selftest` and `appwatch selftest`.

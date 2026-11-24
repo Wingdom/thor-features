@@ -88,13 +88,16 @@ check "decide is not called with a literal elapsed time" "" \
 # same record -- was invisible to it, and it would wash again as soon as the
 # idle threshold came round. Assert the read happens inside the loop.
 check "the loop reads the record every pass" "yes" \
-      "$(awk '/^loop\(\) \{/,/^\}/' oledwatch \
-         | awk '/while :; do/,0' | grep -q 'LAST_FIRE=\$(last_fire_ms' && echo yes || echo no)"
+      "$(grep -q 'LAST_FIRE=\$(last_fire_ms' \
+           <<<"$(awk '/^loop\(\) \{/,/^\}/' oledwatch | awk '/while :; do/,0')" \
+         && echo yes || echo no)"
 check "and does not also cache it before the loop" "no" \
-      "$(awk '/^loop\(\) \{/,/while :; do/' oledwatch | grep -q 'LAST_FIRE=' && echo yes || echo no)"
+      "$(grep -q 'LAST_FIRE=' <<<"$(awk '/^loop\(\) \{/,/while :; do/' oledwatch)" \
+         && echo yes || echo no)"
 
 check "start_wash records the fire itself" "yes" \
-      "$(awk '/^start_wash\(\) \{/,/^\}/' oledwatch | grep -q 'record_fire' && echo yes || echo no)"
+      "$(grep -q 'record_fire' <<<"$(awk '/^start_wash\(\) \{/,/^\}/' oledwatch)" \
+         && echo yes || echo no)"
 check "record_fire is not called from anywhere else" "1" \
       "$(sed 's/#.*//' oledwatch | grep -c '^[^#]*[^_]record_fire$')"
 
@@ -147,7 +150,7 @@ if [ -d ../thor-oledwash/src ]; then
     }
     named=""
     for f in ../thor-oledwash/src/com/thorfeatures/oledwash/*.java; do
-        if strip_java "$f" | grep -q 'oledwatch'; then
+        if grep -q 'oledwatch' <<<"$(strip_java "$f")"; then
             named="$named$(basename "$f") "
         fi
     done
@@ -177,12 +180,14 @@ fi
 echo
 echo " kill switch"
 check "uninstall stops the daemon" "yes" \
-      "$(strip magisk/uninstall.sh | grep -qE 'oledwatch.*stop|stop' && echo yes || echo no)"
+      "$(grep -qE 'oledwatch.*stop|stop' <<<"$(strip magisk/uninstall.sh)" \
+         && echo yes || echo no)"
 # Comments stripped but NOT string literals: the path being removed lives
 # inside the quotes, so the strip that protects the other checks would eat the
 # very thing this one is looking for.
 check "uninstall removes the state directory" "yes" \
-      "$(sed 's/#.*//' magisk/uninstall.sh | grep -qE 'rm -rf +"?\$STATE' && echo yes || echo no)"
+      "$(grep -qE 'rm -rf +"?\$STATE' <<<"$(sed 's/#.*//' magisk/uninstall.sh)" \
+         && echo yes || echo no)"
 check "uninstall restores nothing, because nothing was changed" "" \
       "$(strip magisk/uninstall.sh | grep -oE 'set-brightness|settings put|>\s*/sys' | tr '\n' ' ')"
 

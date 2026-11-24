@@ -57,8 +57,11 @@ applied=$(grep -E '^ *[a-z|]+\) "\$FANCTL" "\$MODE"' "$M/service.sh" | sed 's/).
 if [ -z "$tiers" ]; then
   bad "service.sh re-applies every tier at boot" "could not read fanctl's mode list"
 else
+  # One line per tier, buffered: piping into `grep -qx` races on SIGPIPE
+  # under pipefail (grep -qx quits at the first match, the writer gets 141).
+  applied_lines=$(tr '|' '\n' <<<"$applied")
   for t in $tiers; do
-    printf '%s\n' "$applied" | tr '|' '\n' | grep -qx "$t" \
+    grep -qx "$t" <<<"$applied_lines" \
       && ok "service.sh re-applies $t at boot" \
       || bad "service.sh re-applies $t at boot" "boot case is '$applied'"
   done
@@ -74,8 +77,9 @@ fi
 # nor switch a governor
 # strip comments first: the invariant is documented in prose, which must not
 # count as a violation. Only an actual write of user_space matters.
-if find "$M" -type f -exec sed 's/#.*//' {} + | grep -qE 'user_space'; then
-  bad "module never sets the user_space governor" "$(find "$M" -type f -exec sed 's/#.*//' {} + | grep -n user_space | head -2)"
+mod_code=$(find "$M" -type f -exec sed 's/#.*//' {} +)
+if grep -qE 'user_space' <<<"$mod_code"; then
+  bad "module never sets the user_space governor" "$(grep -n user_space <<<"$mod_code" | head -2)"
 else ok "module never sets the user_space governor"; fi
 
 # REGRESSION GUARD: selftest once called discover() twice per trip per mode
@@ -88,8 +92,8 @@ nd=$(awk '/^selftest\(\)/{f=1} f&&/^}$/{exit} f' "$HERE/../fanctl" \
 
 # and discovery must never appear as a command substitution (which is how the
 # per-line rescan crept in originally)
-if awk '/^selftest\(\)/{f=1} f&&/^}$/{exit} f' "$HERE/../fanctl" \
-   | sed 's/#.*//' | grep -q '\$(discover'; then
+if grep -q '\$(discover' \
+     <<<"$(awk '/^selftest\(\)/{f=1} f&&/^}$/{exit} f' "$HERE/../fanctl" | sed 's/#.*//')"; then
   bad "selftest never uses \$(discover ...) substitution"
 else
   ok "selftest never uses \$(discover ...) substitution"
@@ -100,7 +104,8 @@ fi
 # a previously latched fan state in place -- seen live with the fan stuck at
 # state 6 while every zone sat at ~40 C.
 grep -q '^settle()' "$HERE/../fanctl" && ok "fanctl defines settle()" || bad "fanctl defines settle()"
-if awk '/^apply\(\)/{f=1} f&&/^}$/{exit} f' "$HERE/../fanctl" | grep -q '^ *settle$'; then
+if grep -q '^ *settle$' \
+     <<<"$(awk '/^apply\(\)/{f=1} f&&/^}$/{exit} f' "$HERE/../fanctl")"; then
   ok "apply() calls settle() after writing trips"
 else
   bad "apply() calls settle() after writing trips"
@@ -148,12 +153,13 @@ else
 fi
 
 # and fanlog.sh must refuse to log rather than guess, if resolution fails
-if sed 's/#.*//' "$HERE/../fanlog.sh" | grep -qE 'exit 1'; then
+fanlog_code=$(sed 's/#.*//' "$HERE/../fanlog.sh")
+if grep -qE 'exit 1' <<<"$fanlog_code"; then
   ok "fanlog.sh aborts when a node cannot be resolved"
 else
   bad "fanlog.sh aborts when a node cannot be resolved" "it must not log with a missing node"
 fi
-if sed 's/#.*//' "$HERE/../fanlog.sh" | grep -q 'pwm-fan'; then
+if grep -q 'pwm-fan' <<<"$fanlog_code"; then
   ok "fanlog.sh resolves the fan by type"
 else
   bad "fanlog.sh resolves the fan by type"

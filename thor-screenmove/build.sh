@@ -29,8 +29,12 @@ rm -f "$ZIP"
 ( cd magisk && zip -qr "../$ZIP" . -x '.*' ) || { echo "build: zip failed" >&2; exit 1; }
 
 # Verify the archive rather than trusting zip's exit code.
+# List once, then match the buffer. `unzip -l | grep -q` is a SIGPIPE race
+# under pipefail: grep quits at the first match and unzip dies with 141, so a
+# present entry can be reported missing and abort the build.
+listing=$(unzip -l "$ZIP")
 for need in module.prop customize.sh uninstall.sh system/bin/screenmove; do
-    unzip -l "$ZIP" | grep -q " $need\$" \
+    grep -q " $need\$" <<<"$listing" \
       || { echo "build: $need missing from $ZIP" >&2; exit 1; }
 done
 echo "   $ZIP"

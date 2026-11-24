@@ -29,12 +29,12 @@ done
 # The four documented presets, and only those, must be offered in usage.
 U=$($DD --help 2>&1)
 for p in native 320 369 288; do
-  echo "$U" | grep -qE "^  $p " && ok "usage lists $p" || no "usage lists $p"
+  grep -qE "^  $p " <<<"$U" && ok "usage lists $p" || no "usage lists $p"
 done
 for p in 400 240 272; do
-  echo "$U" | grep -qE "^  $p " && no "usage does not offer $p" || ok "usage does not offer $p"
+  grep -qE "^  $p " <<<"$U" && no "usage does not offer $p" || ok "usage does not offer $p"
 done
-echo "$U" | grep -qi "secondary display is never touched" \
+grep -qi "secondary display is never touched" <<<"$U" \
   && ok "usage states the secondary display is untouched" \
   || no "usage states the secondary display is untouched"
 
@@ -68,14 +68,17 @@ for preset in 320 369 288 native; do
   OUT=$(PATH="$T/bin:$PATH" WM_CALLS="$T/calls.$preset" WM_STATE="$T/state.$preset" \
         THOR_DD_STATE="$T/state" sh ./display-density "$preset" 2>&1); RC=$?
   [ $RC -eq 0 ] && ok "applies preset $preset" || no "applies preset $preset (rc=$RC: $OUT)"
-  # every density call must name a display
-  if grep -q '^density' "$T/calls.$preset" && ! grep '^density' "$T/calls.$preset" | grep -qv -- '-d '; then
+  # every density call must name a display. Buffer the density lines rather
+  # than piping into `grep -q`, which exits at the first match and kills the
+  # producer with SIGPIPE -- pipefail then reports the pipeline as failed.
+  dcalls=$(grep '^density' "$T/calls.$preset" || true)
+  if [ -n "$dcalls" ] && ! grep -qv -- '-d ' <<<"$dcalls"; then
     ok "preset $preset: all density calls pin a display"
   else
     no "preset $preset: all density calls pin a display ($(tr '\n' '; ' < "$T/calls.$preset"))"
   fi
   # and none may write to display 1
-  if grep '^density' "$T/calls.$preset" | grep -qE '^density (reset|[0-9]+) .*-d 1'; then
+  if grep -qE '^density (reset|[0-9]+) .*-d 1' <<<"$dcalls"; then
     no "preset $preset: never writes display 1"
   else
     ok "preset $preset: never writes display 1"

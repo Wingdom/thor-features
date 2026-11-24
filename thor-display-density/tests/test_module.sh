@@ -62,13 +62,13 @@ grep -qE '^density (reset|[0-9]+)' "$A/wm.calls" 2>/dev/null \
 # wrong device
 B=$(mktemp -d); mkstub "$B" sunfish 320; mkdir -p "$B/mod/system/bin"; cp display-density "$B/mod/system/bin/"
 OUT=$(runcustomize "$B"); RC=$?
-{ [ $RC -ne 0 ] && echo "$OUT" | grep -qi "not an odin2thor"; } \
+{ [ $RC -ne 0 ] && grep -qi "not an odin2thor" <<<"$OUT"; } \
   && ok "aborts on a non-odin2thor device" || no "aborts on a non-odin2thor device"
 
 # unexpected panel density -> the preset descriptions would be wrong
 C=$(mktemp -d); mkstub "$C" odin2thor 480; mkdir -p "$C/mod/system/bin"; cp display-density "$C/mod/system/bin/"
 OUT=$(runcustomize "$C"); RC=$?
-{ [ $RC -ne 0 ] && echo "$OUT" | grep -qi "Unexpected panel"; } \
+{ [ $RC -ne 0 ] && grep -qi "Unexpected panel" <<<"$OUT"; } \
   && ok "aborts on an unexpected panel density" || no "aborts on an unexpected panel density"
 
 # service.sh: nothing saved -> does nothing
@@ -84,7 +84,7 @@ E=$(mktemp -d); mkstub "$E" odin2thor 320; mkdir -p "$E/state"; echo 288 > "$E/s
 PATH="$E/bin:$PATH" THOR_DD_STATE="$E/state" sh magisk/service.sh
 grep -q '^density 288 -d 0$' "$E/wm.calls" && ok "service.sh re-applies the saved preset to display 0" \
   || no "service.sh re-applies the saved preset to display 0"
-grep '^density' "$E/wm.calls" | grep -qE '^density (reset|[0-9]+) .*-d 1' \
+grep -qE '^density (reset|[0-9]+) .*-d 1' "$E/wm.calls" \
   && no "service.sh never writes display 1" || ok "service.sh never writes display 1"
 grep -q "applied: display 0 now 288" "$E/state/boot.log" 2>/dev/null \
   && ok "service.sh verifies and logs the effect" || no "service.sh verifies and logs the effect"

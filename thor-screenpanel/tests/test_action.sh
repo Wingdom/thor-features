@@ -34,7 +34,8 @@ check "no path targets the top display" "" \
 # The short press must unblank before it launches, or it would open the panel
 # onto a powered-down panel.
 check "short press unblanks the bottom screen first" "yes" \
-      "$(awk '/^ *short\)/,/;;/' action.sh | grep -q 'screenblank on bottom' && echo yes || echo no)"
+      "$(grep -q 'screenblank on bottom' <<<"$(awk '/^ *short\)/,/;;/' action.sh)" \
+         && echo yes || echo no)"
 check "the unblank precedes the am start" "yes" \
       "$(awk '/^ *short\)/,/;;/' action.sh \
          | awk '/screenblank on bottom/{u=NR} /am start/{a=NR} END{print (u && a && u < a) ? "yes" : "no"}')"
@@ -43,7 +44,8 @@ check "the unblank precedes the am start" "yes" \
 # The long press fires mid-hold, so without a cue the user is holding a button
 # with no idea whether the threshold passed.
 check "long press gives haptic feedback" "yes" \
-      "$(awk '/^ *long\)/,/;;/' action.sh | grep -q 'vibrator_manager' && echo yes || echo no)"
+      "$(grep -q 'vibrator_manager' <<<"$(awk '/^ *long\)/,/;;/' action.sh)" \
+         && echo yes || echo no)"
 
 # `predefined` effects are a no-op on this device's vibrator HAL - they exit 0
 # and do nothing, confirmed by feel. Only `oneshot` actually fires, so a

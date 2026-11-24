@@ -51,14 +51,14 @@ else
   ok "default is not a battery-status trigger"
 fi
 # and the gate must abort on the default, not merely warn
-if awk '/usb-online/,/fi/' "$M/customize.sh" | grep -q abort; then
+if grep -q abort <<<"$(awk '/usb-online/,/fi/' "$M/customize.sh")"; then
   ok "install aborts if the default trigger is missing"
 else bad "install aborts if the default trigger is missing"; fi
 # online-based triggers must seed from usb/online, not battery status
-if code | awk '/^ *usb\)/,/;;/' | grep -q 'seed_state online'; then
+if grep -q 'seed_state online' <<<"$(code | awk '/^ *usb\)/,/;;/')"; then
   ok "usb mode seeds from usb/online"
 else bad "usb mode seeds from usb/online" "edge-driven: it would come up dark"; fi
-if code | awk '/^ *charge\)/,/;;/' | grep -q 'seed_state online'; then
+if grep -q 'seed_state online' <<<"$(code | awk '/^ *charge\)/,/;;/')"; then
   ok "charge picks the online seed for *-online triggers"
 else bad "charge picks the online seed for *-online triggers"; fi
 grep -qE 'stick' "$M/customize.sh" && ok "customize.sh checks for stick LEDs" || bad "customize.sh checks for stick LEDs"
@@ -66,12 +66,14 @@ grep -qE 'stick' "$M/customize.sh" && ok "customize.sh checks for stick LEDs" ||
 # Magisk sources customize.sh BEFORE extraction, so set_perm on system/bin/*
 # there targets a path that does not exist yet (the v0.1.0 bug). It belongs in
 # set_permissions(), which Magisk calls after extracting.
-if awk '/^set_permissions\(\)/{f=1} f&&/^}/{f=0} f' "$M/customize.sh" | grep -q 'system/bin/stickfx'; then
+if grep -q 'system/bin/stickfx' \
+     <<<"$(awk '/^set_permissions\(\)/{f=1} f&&/^}/{f=0} f' "$M/customize.sh")"; then
   ok "set_perm on the binary is inside set_permissions()"
 else
   bad "set_perm on the binary is inside set_permissions()" "it would run before extraction"
 fi
-if sed '/^set_permissions()/,/^}/d' "$M/customize.sh" | grep -q 'set_perm.*system/bin'; then
+if grep -q 'set_perm.*system/bin' \
+     <<<"$(sed '/^set_permissions()/,/^}/d' "$M/customize.sh")"; then
   bad "no set_perm on system/bin at top level" "runs before extraction"
 else
   ok "no set_perm on system/bin at top level"
@@ -95,7 +97,8 @@ if awk '/sys.boot_completed/{b=NR} /capture --force/{c=NR} END{exit (b&&c&&b<c)?
   ok "service.sh waits BEFORE capturing"
 else bad "service.sh waits BEFORE capturing" "capture must follow AynParts' boot write"; fi
 # a fresh install must be inert
-if awk '/^ *case "\$MODE"/,/esac/' "$M/service.sh" | grep -q '\*) echo "nothing to apply"'; then
+if grep -q '\*) echo "nothing to apply"' \
+     <<<"$(awk '/^ *case "\$MODE"/,/esac/' "$M/service.sh")"; then
   ok "service.sh does nothing when no mode is set"
 else bad "service.sh does nothing when no mode is set"; fi
 
@@ -122,13 +125,14 @@ echo "REGRESSION: trigger lists must not be word-split"
 # with cwd "/" it expanded to the single-char entry "d" and the bracket vanished.
 # On hardware the trigger was correctly bound while the script reported all 8
 # writes as failed.
-if code | awk '/^(active_trigger|trigger_supported)\(\)/{f=1} f&&/^}/{f=0} f' | grep -qE 'for [A-Za-z_]+ in \$[0-9]'; then
+if grep -qE 'for [A-Za-z_]+ in \$[0-9]' \
+     <<<"$(code | awk '/^(active_trigger|trigger_supported)\(\)/{f=1} f&&/^}/{f=0} f')"; then
   bad "parsers do not word-split the trigger list" "found 'for x in \$1' in a parser"
 else
   ok "parsers do not word-split the trigger list"
 fi
 # ${x#*[} is an invalid pattern (unterminated bracket expression)
-if code | grep -qE '\$\{[A-Za-z_0-9]+#\*\[\}'; then
+if grep -qE '\$\{[A-Za-z_0-9]+#\*\[\}' <<<"$(code)"; then
   bad "bracket patterns are escaped" "found an unescaped \${x#*[}"
 else
   ok "bracket patterns are escaped"
@@ -184,7 +188,7 @@ nw=$(code | grep -cE 'wr "\$[a-z_]+/multi_intensity"')
 [ "$nw" -ge 2 ] && ok "found $nw multi_intensity write sites (test is not vacuous)" \
                 || bad "multi_intensity write sites found" "got $nw -- the matcher is broken"
 # `off` must hand the colour channel back
-if code | awk '/^ *off\)/,/;;/' | grep -q 'rm -f "\$COLOR_FILE"'; then
+if grep -q 'rm -f "\$COLOR_FILE"' <<<"$(code | awk '/^ *off\)/,/;;/')"; then
   ok "off drops the persisted colour takeover"
 else bad "off drops the persisted colour takeover" "a later boot would re-take it"; fi
 

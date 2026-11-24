@@ -141,28 +141,28 @@ stub_env Thor quiet yes
 out=$(run_customize)
 check "installs on a Thor with fanctl present" "0" "$?"
 check "  reports the baseline" "yes" \
-      "$(echo "$out" | grep -q 'baseline: quiet' && echo yes || echo no)"
+      "$(grep -q 'baseline: quiet' <<<"$out" && echo yes || echo no)"
 check "  creates the enabled flag" "1" "$(cat "$TMP/state/enabled" 2>/dev/null)"
 
 stub_env "Pixel 8" quiet yes
 out=$(run_customize); rc=$?
 check "aborts on non-Thor hardware" "1" "$rc"
-check "  and says why" "yes" "$(echo "$out" | grep -q 'AYN Thor only' && echo yes || echo no)"
+check "  and says why" "yes" "$(grep -q 'AYN Thor only' <<<"$out" && echo yes || echo no)"
 
 stub_env Thor quiet no
 out=$(run_customize); rc=$?
 check "aborts when fanctl is missing" "1" "$rc"
 check "  and names the required module" "yes" \
-      "$(echo "$out" | grep -q 'thor-fanctl is required' && echo yes || echo no)"
+      "$(grep -q 'thor-fanctl is required' <<<"$out" && echo yes || echo no)"
 check "  and warns about Magisk staging" "yes" \
-      "$(echo "$out" | grep -q 'NEXT boot' && echo yes || echo no)"
+      "$(grep -q 'NEXT boot' <<<"$out" && echo yes || echo no)"
 
 # A baseline of `default` is a warning, not an abort: a tier can be chosen later.
 stub_env Thor default yes
 out=$(run_customize); rc=$?
 check "installs with a 'default' baseline" "0" "$rc"
 check "  but warns it will not engage" "yes" \
-      "$(echo "$out" | grep -q 'not engage' && echo yes || echo no)"
+      "$(grep -q 'not engage' <<<"$out" && echo yes || echo no)"
 
 # --- uninstall.sh: the revert path, executed against stubs -------------------
 # This is the important one. The applied tier is persisted by FANCTL and

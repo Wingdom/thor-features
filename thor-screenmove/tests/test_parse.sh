@@ -123,7 +123,7 @@ check "launchers: resolves launcher3 + cocoon" \
 # com.android.settings/.FallbackHome registers as HOME at priority=-1000.
 # Treating Settings as a launcher would make Settings unmovable - a worse bug
 # than the one being fixed - so negative-priority matches must be dropped.
-if launchers launcher-query.txt | grep -q "com.android.settings"; then
+if grep -q "com.android.settings" <<<"$(launchers launcher-query.txt)"; then
     fail=$((fail+1)); printf '  FAIL  launchers: FallbackHome made Settings unmovable\n'
 else
     pass=$((pass+1)); printf '  ok    launchers: drops negative-priority FallbackHome\n'

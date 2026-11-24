@@ -127,9 +127,9 @@ run_and_signal() {
 
 term_log=$(run_and_signal TERM)
 check "the daemon logs its own start" "yes" \
-      "$(printf '%s' "$term_log" | grep -q 'main: started (threshold 2000ms' && echo yes || echo no)"
+      "$(grep -q 'main: started (threshold 2000ms' <<<"$term_log" && echo yes || echo no)"
 check "SIGTERM is recorded by name" "yes" \
-      "$(printf '%s' "$term_log" | grep -q 'main: exiting on SIGTERM' && echo yes || echo no)"
+      "$(grep -q 'main: exiting on SIGTERM' <<<"$term_log" && echo yes || echo no)"
 # The EXIT trap must also fire, and after the signal line - that ordering is
 # what distinguishes "signalled" from "the shell exited on its own".
 check "the exit line follows the signal line" "yes" \
@@ -137,7 +137,7 @@ check "the exit line follows the signal line" "yes" \
 
 hup_log=$(run_and_signal HUP)
 check "SIGHUP is recorded by name" "yes" \
-      "$(printf '%s' "$hup_log" | grep -q 'main: exiting on SIGHUP' && echo yes || echo no)"
+      "$(grep -q 'main: exiting on SIGHUP' <<<"$hup_log" && echo yes || echo no)"
 check "SIGHUP is not mislabelled as TERM" "" \
       "$(printf '%s' "$hup_log" | grep -o 'SIGTERM' | tr '\n' ' ')"
 
@@ -148,7 +148,7 @@ kill_log=$(run_and_signal KILL)
 check "SIGKILL leaves no exit line at all" "" \
       "$(printf '%s' "$kill_log" | grep -o 'exiting on SIG[A-Z]*' | tr '\n' ' ')"
 check "but the start line is still there to prove it ran" "yes" \
-      "$(printf '%s' "$kill_log" | grep -q 'main: started' && echo yes || echo no)"
+      "$(grep -q 'main: started' <<<"$kill_log" && echo yes || echo no)"
 
 # --- exactly one line per stop ----------------------------------------------
 # cmd_stop signals the whole process group, and every subshell inherits the
