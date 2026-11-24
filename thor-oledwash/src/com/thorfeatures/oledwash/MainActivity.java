@@ -2,11 +2,13 @@ package com.thorfeatures.oledwash;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -45,6 +47,7 @@ public final class MainActivity extends Activity {
         super.onCreate(saved);
         setContentView(R.layout.main);
         content = findViewById(R.id.content);
+        applySystemBarInsets(findViewById(R.id.root));
         load();
         build();
     }
@@ -53,6 +56,28 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refresh();
+    }
+
+    /**
+     * Keep the content clear of the system bars.
+     *
+     * <p>An app targeting SDK 35 or later is laid out edge to edge, so without
+     * this the scroll view starts at the very top of the window and its first
+     * paragraph is drawn underneath the status bar -- unreadable, and not
+     * scrollable into view, because the scroll position is already 0.
+     *
+     * <p>The display cutout is included: this is a handheld, and a wash
+     * settings screen is not worth losing a line of text to a camera hole on
+     * some other AYN device.
+     */
+    private void applySystemBarInsets(View root) {
+        if (root == null) return;
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return WindowInsets.CONSUMED;
+        });
     }
 
     // ------------------------------------------------------------- storage --

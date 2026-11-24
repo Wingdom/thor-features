@@ -4,6 +4,7 @@
      a hand-written XML copy of them would be a second place for the offered
      values to live. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"

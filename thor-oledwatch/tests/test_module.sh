@@ -70,6 +70,14 @@ check "no backticks outside comments in install scripts" "" \
 
 # A `pkill -f` pattern appears in the killer's own command line and matches
 # itself. This has already cost this project three round trips elsewhere.
+# The CLI used to pass a hardcoded elapsed time where the timer passes a real
+# one, so `decide` could never report the cooldown. Exactly one occurrence of
+# the sentinel is allowed: the "no record" return inside last_fire_ms.
+check "the cooldown sentinel appears once, as a return value" "1" \
+      "$(sed 's/#.*//' oledwatch | grep -c -- '-\?999999999')"
+check "decide is not called with a literal elapsed time" "" \
+      "$(sed 's/#.*//' oledwatch | grep -oE 'decide .*[0-9]{6,}' | tr '\n' ' ')"
+
 check "no pkill/pgrep -f anywhere" "" \
       "$(sed 's/#.*//' oledwatch "${SHIPPED[@]}" \
          | grep -oE '\b(pkill|pgrep)\b[^|]*' | tr '\n' ' ')"

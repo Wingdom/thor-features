@@ -152,6 +152,59 @@ $(pref_get /nonexistent/x band 0.33) $(pref_get /nonexistent/x cycle_ms 2500) \
 $(pref_get /nonexistent/x cycles 4) $(pref_get /nonexistent/x grain 2) \
 $(pref_get /nonexistent/x target 0)"
 
+# --- when the last wash ran --------------------------------------------------
+# REGRESSION. `oledwatch decide` used to pass a hardcoded "ages ago" where the
+# timer passes real elapsed time, because the last fire lived only in a shell
+# variable the CLI could not read. So the one command whose job is "say what
+# would happen right now" reported `wash` while the daemon was correctly
+# holding -- observed three times on the device. The record is now a file, and
+# both read it.
+echo
+echo " last_fire_ms"
+LF=/tmp/oledwatch-lf.$$
+BID=0d4b1f3a-0000-0000-0000-000000000001
+OTHER=9999aaaa-0000-0000-0000-000000000002
+NONE=-999999999
+
+rm -f "$LF"
+check "no record at all"            "$NONE" "$(last_fire_ms "$LF" "$BID" 500000)"
+
+echo "$BID 120000" > "$LF"
+check "a record from this boot"     "120000" "$(last_fire_ms "$LF" "$BID" 500000)"
+
+# Uptime restarts at zero every boot, so a value from a previous boot is not
+# merely stale, it is in a different coordinate system. A short previous boot
+# followed by a long current one would leave a number that looks plausible.
+echo "$OTHER 120000" > "$LF"
+check "a record from a previous boot" "$NONE" "$(last_fire_ms "$LF" "$BID" 500000)"
+
+echo "$BID 900000" > "$LF"
+check "later than now is unusable"  "$NONE" "$(last_fire_ms "$LF" "$BID" 500000)"
+
+echo "$BID banana" > "$LF"
+check "garbage is unusable"         "$NONE" "$(last_fire_ms "$LF" "$BID" 500000)"
+
+: > "$LF"
+check "an empty file is unusable"   "$NONE" "$(last_fire_ms "$LF" "$BID" 500000)"
+
+# And the whole point: a real record makes the cooldown visible to decide.
+echo "$BID 400000" > "$LF"
+now=500000
+lf=$(last_fire_ms "$LF" "$BID" "$now")
+check "a recent wash is held, not re-fired" "hold cooldown" \
+      "$(decide 1 1 Awake 400000 0 -1 no $T $(( now - lf )))"
+echo "$BID 100000" > "$LF"
+lf=$(last_fire_ms "$LF" "$BID" "$now")
+check "an old wash does not hold"   "wash" \
+      "$(decide 1 1 Awake 400000 0 -1 no $T $(( now - lf )))"
+# With no record at all, nothing is held back -- which is the state after a
+# reboot, and the reason a fresh boot washes on schedule rather than waiting.
+rm -f "$LF"
+lf=$(last_fire_ms "$LF" "$BID" "$now")
+check "no record does not hold"     "wash" \
+      "$(decide 1 1 Awake 400000 0 -1 no $T $(( now - lf )))"
+rm -f "$LF"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ] || exit 1

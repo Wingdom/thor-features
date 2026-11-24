@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- The control panel. DayNight so values-night applies. -->
+    <!-- The control panel. DayNight so values-night applies.
+
+         No action bar, for two reasons. It showed the app name, which the
+         screen already prints as its own heading, so it was a duplicate title.
+         And an app targeting SDK 35 or later is laid out edge to edge, so the
+         bar sat on top of the first paragraph instead of above it: the intro
+         text began at y=107 while the bar occupied y=84 to 124, with the scroll
+         view already at position 0, so the first line could not be read at all.
+         MainActivity pads for the system bars; removing this one removes the
+         other half of the overlap. -->
     <style name="WashTheme" parent="@android:style/Theme.DeviceDefault.DayNight">
         <item name="android:windowBackground">@color/background</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
     </style>
 
     <!-- The wash itself: black, no action bar, no decorations of its own. The

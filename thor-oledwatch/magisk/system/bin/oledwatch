@@ -179,6 +179,35 @@ pref_get() {
     echo "$_v"
 }
 
+# last_fire_ms <file> <current_boot_id> <now_ms>
+#   When the last wash ran, as an uptime in milliseconds, or a large negative
+#   number meaning "no usable record".
+#
+#   This exists so that `oledwatch decide` tells the truth. The cooldown used to
+#   be invisible to it: the timer loop kept the last fire in a shell variable,
+#   which no other process can read, so the CLI passed a hardcoded "ages ago"
+#   and happily reported `wash` at moments the daemon was correctly holding.
+#   Reported by Cameron after watching it say wash three times while nothing
+#   fired. A caveat in the output would have been honest; a real source is
+#   better.
+#
+#   The record is stamped with the boot id. Uptime restarts at zero on every
+#   boot, so a value from a previous boot is not merely stale, it is in a
+#   different coordinate system -- and a short previous boot followed by a long
+#   current one would leave a stale number that looks perfectly plausible.
+#   Comparing boot ids settles it exactly rather than by reasoning about which
+#   windows are narrow enough to ignore.
+last_fire_ms() {
+    _none=-999999999
+    [ -f "$1" ] || { echo "$_none"; return 0; }
+    read -r _bid _val < "$1" 2>/dev/null || { echo "$_none"; return 0; }
+    [ "$_bid" = "$2" ] || { echo "$_none"; return 0; }
+    case "$_val" in ''|*[!0-9]*) echo "$_none"; return 0 ;; esac
+    # Cannot have fired later than now within one boot; treat as unusable.
+    [ "$_val" -gt "$3" ] && { echo "$_none"; return 0; }
+    echo "$_val"
+}
+
 [ -n "${OLEDWATCH_LIB:-}" ] && return 0
 
 # ------------------------------------------------------------------ runtime --
@@ -194,6 +223,9 @@ ACTIVITY=${ACTIVITY:-$PKG/.AutoWashActivity}
 # them early would quietly see nothing and report defaults the user never chose.
 PREFS=${PREFS:-/data/user_de/0/$PKG/shared_prefs/oledwash.xml}
 LOG_MAX=${LOG_MAX:-400}
+# When the last wash ran, so that `decide` sees the same cooldown the timer
+# does. Stamped with the boot id, because uptime restarts at zero.
+LAST_FIRE_FILE=${LAST_FIRE_FILE:-$STATE/last_fire}
 
 mkdir -p "$STATE" 2>/dev/null
 
@@ -214,6 +246,14 @@ logit() {
 uptime_ms() {
     read -r _up _rest < /proc/uptime 2>/dev/null || _up=0
     echo "$_up" | awk '{ printf "%d\n", $1 * 1000 }'
+}
+
+boot_id() {
+    cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown
+}
+
+record_fire() {
+    echo "$(boot_id) $(uptime_ms)" > "$LAST_FIRE_FILE" 2>/dev/null
 }
 
 app_installed() {
@@ -270,7 +310,11 @@ start_wash() {
 
 loop() {
     logit "oledwatch started"
-    LAST_FIRE=-999999999
+    # Seeded from the file rather than from nothing, so that restarting the
+    # daemon mid-boot does not forget a wash that just happened and fire again
+    # immediately. Across a reboot the boot id will not match and this correctly
+    # comes back as "no record".
+    LAST_FIRE=$(last_fire_ms "$LAST_FIRE_FILE" "$(boot_id)" "$(uptime_ms)")
     while :; do
         read_config
         snapshot
@@ -287,7 +331,10 @@ loop() {
             > "$STATE/.last" 2>/dev/null
 
         if [ "$VERDICT" = "wash" ]; then
-            start_wash && LAST_FIRE=$(uptime_ms)
+            if start_wash; then
+                LAST_FIRE=$(uptime_ms)
+                record_fire
+            fi
             REMAIN=$THRESHOLD_MS
         elif [ "$VERDICT" = "hold app-missing" ] || [ "$VERDICT" = "hold disabled" ]; then
             # Nothing to do and nothing that will change within a minute. Back
@@ -347,8 +394,14 @@ case "${1:-status}" in
         snapshot
         set -- $(power_facts "$STATE/.power")
         if app_installed; then _a=1; else _a=0; fi
+        # The same cooldown the timer applies, from the same record, rather
+        # than a hardcoded "ages ago" that made this command claim a wash was
+        # due whenever one had just run.
+        _now=$(uptime_ms)
+        _lf=$(last_fire_ms "$LAST_FIRE_FILE" "$(boot_id)" "$_now")
         decide "$ENABLED" "$_a" "${1:-unknown}" "${2:--1}" "${3:-0}" "${4:--1}" \
-               "$(keyguard_showing "$STATE/.activity")" "$THRESHOLD_MS" 999999999
+               "$(keyguard_showing "$STATE/.activity")" "$THRESHOLD_MS" \
+               "$(( _now - _lf ))"
         ;;
     log)
         [ -f "$LOG" ] && cat "$LOG" || echo "(no log yet)"
@@ -365,6 +418,13 @@ case "${1:-status}" in
         echo "  enabled:    $ENABLED"
         echo "  idle:       ${IDLE_MINUTES}m (${THRESHOLD_MS}ms)"
         echo "  wash:       band $BAND, ${CYCLE_MS}ms x $CYCLES, grain $GRAIN, target $TARGET"
+        _now=$(uptime_ms)
+        _lf=$(last_fire_ms "$LAST_FIRE_FILE" "$(boot_id)" "$_now")
+        if [ "$_lf" -lt 0 ]; then
+            echo "  last wash:  none this boot"
+        else
+            echo "  last wash:  $(( (_now - _lf) / 1000 ))s ago"
+        fi
         [ -f "$STATE/.last" ] && echo "  last check: $(cat "$STATE/.last")"
         ;;
     *)
