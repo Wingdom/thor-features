@@ -13,13 +13,13 @@
     <!-- screen -->
     <path
         android:fillColor="#FF1E2730"
-        android:strokeColor="#FF4ADE9B"
+        android:strokeColor="#FF5DBC91"
         android:strokeWidth="2"
         android:pathData="M24,30h60a4,4 0 0 1 4,4v40a4,4 0 0 1 -4,4h-60a4,4 0 0 1 -4,-4v-40a4,4 0 0 1 4,-4z" />
 
     <!-- the band -->
     <path
-        android:fillColor="#FF4ADE9B"
+        android:fillColor="#FF5DBC91"
         android:pathData="M22,47h64v14h-64z" />
 
 </vector>
