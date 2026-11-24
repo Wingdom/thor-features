@@ -7,6 +7,7 @@ oledwatch status              daemon, config, and the last decision it made
 oledwatch start               run it (service.sh does this at boot)
 oledwatch stop
 oledwatch run [--dry-run]     wash now, by the same path the timer takes
+                              (and recorded the same way, so the cooldown applies)
 oledwatch decide              say what it would do right now, and why
 oledwatch log
 ```

@@ -305,6 +305,14 @@ start_wash() {
             return 1 ;;
     esac
     logit "wash started (idle ${IDLE_MINUTES}m, band $BAND, ${CYCLE_MS}ms x $CYCLES, grain $GRAIN, target $TARGET)"
+    # Recorded HERE rather than at the call site, because there are two call
+    # sites and only one of them remembered. `oledwatch run` fired a wash and
+    # left the record untouched, so `status` went on reporting a last wash from
+    # minutes earlier, and a manual wash did not count towards the cooldown --
+    # the timer could fire again a few minutes after you had just forced one.
+    # The README called `run` "wash now, by the same path the timer takes",
+    # which was the claim that made it a defect rather than a choice.
+    record_fire
     return 0
 }
 
@@ -331,9 +339,10 @@ loop() {
             > "$STATE/.last" 2>/dev/null
 
         if [ "$VERDICT" = "wash" ]; then
+            # Read back rather than taking uptime again, so the daemon in
+            # memory and the file on disk cannot drift apart.
             if start_wash; then
-                LAST_FIRE=$(uptime_ms)
-                record_fire
+                LAST_FIRE=$(last_fire_ms "$LAST_FIRE_FILE" "$(boot_id)" "$(uptime_ms)")
             fi
             REMAIN=$THRESHOLD_MS
         elif [ "$VERDICT" = "hold app-missing" ] || [ "$VERDICT" = "hold disabled" ]; then
