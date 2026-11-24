@@ -68,23 +68,60 @@ reader is needed.
 
 ## Configuring it
 
-`/data/adb/thor-oledwatch/config`. **Nothing writes this yet** — the app's
-settings screen for it is not built, so the defaults below are what runs and
-changing them means editing the file by hand:
+In the **app**, under *Run by itself*. There is no config file of this
+module's own.
+
+The settings are the app's own preferences, at
+`/data/user_de/0/com.thorfeatures.oledwash/shared_prefs/oledwash.xml`, and this
+daemon reads them. The direction is the point: the app writes them with no root
+and no permission, and the half that already has root does the reading. The
+alternative — the app writing under `/data/adb` — would have needed `su` in the
+app and cost it its Magisk Superuser grant.
+
+Device-protected storage rather than the default, because credential-encrypted
+preferences are unreadable until the first unlock after a boot, and a daemon
+reading them early would silently fall back to defaults the user never chose.
 
 ```
-enabled=1
-idle_minutes=5
-band=0.33
-cycle_ms=2500
-cycles=4
-grain=2
-target=0          # 0 both panels, 1 primary only, 2 secondary only
+auto          true        Automatic on/off
+idle_minutes  5           minutes of inactivity before a wash
+band          0.33        band height as a fraction of the panel
+cycle_ms      2500        one sweep
+cycles        4           sweeps per wash
+grain         2           screen pixels per noise pixel
+target        0           0 both panels, 1 primary only, 2 secondary only
 ```
 
-A missing file, a missing key or a blank value all fall back to the defaults
-above, so a half-written config degrades to something that works rather than to
-an empty variable used as a number.
+A missing file, a missing key or a blank value all fall back to the values
+above, which are exactly `Params.java`'s — a test asserts that, because the file
+does not exist until the settings screen is first opened and a disagreement
+would be invisible until then.
+
+## Verified on hardware
+
+Flashed and rebooted on 2026-11-24, LineageOS 24, with the app's interval set to
+2 minutes.
+
+```
+09:35:58  oledwatch started
+09:37:57  wash started (idle 2m, band 0.33, 2500ms x 4, grain 2, target 0)
+09:39:59  wash started (idle 2m, band 0.33, 2500ms x 4, grain 2, target 0)
+```
+
+- `service.sh` started it at boot; one process, pid matching the pidfile.
+- It read **2m** from the app rather than its own 5m fallback.
+- The first decision after boot was `hold locked` — the device was on the lock
+  screen, and the keyguard gate refused on real state rather than on a fixture.
+  Worth noting that the same sample read `override=10000`: the lock screen sets
+  a user-activity timeout override, so had the checks been ordered differently
+  this would have reported `timeout-override`. Both mean "do not wash", but only
+  one is the true reason.
+- It fired at `idle=120606` against a 120 000 ms threshold — the first poll past
+  the line.
+- `hold cooldown` was then observed at `idle=201577`, well past the threshold,
+  which is what stops it firing on every poll while the device is left alone.
+- The second wash came 122 seconds after the first, so the interval repeats.
+- Both panels returned to their launchers afterwards; nothing was left on screen.
 
 ## Safety
 
