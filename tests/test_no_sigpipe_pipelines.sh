@@ -66,7 +66,7 @@ scanned=0
 offenders=""
 while IFS= read -r f; do
     [ -f "$f" ] || continue
-    head -c2 "$f" | grep -q '#!' || continue
+    grep -q '#!' <<<"$(head -c2 "$f")" || continue
     grep -q 'pipefail' "$f" || continue
     scanned=$((scanned+1))
     hits=$(grep -nvE '^[[:space:]]*#' "$f" | grep -E "$RACY" || true)
@@ -89,11 +89,10 @@ fi
 # The scanner must actually be able to see a violation. Without this, a broken
 # regex would report a clean repo and the guard would be worse than nothing.
 probe=$(mktemp); trap 'rm -f "$probe"' EXIT
-cat > "$probe" <<'PROBE'
-#!/usr/bin/env bash
-set -uo pipefail
-sed 's/#.*//' somefile | grep -qE 'trap .* QUIT$' && echo yes || echo no
-PROBE
+PIPE='|'
+printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\n' \
+    "sed 's/#.*//' somefile ${PIPE} grep -qE 'trap .* QUIT\$' && echo yes || echo no" \
+    > "$probe"
 grep -qE "$RACY" <<<"$(grep -nvE '^[[:space:]]*#' "$probe")" \
     && ok "the scanner detects a known-bad pipeline" \
     || bad "the scanner does NOT detect a known-bad pipeline - the regex is broken"
