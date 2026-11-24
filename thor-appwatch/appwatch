@@ -290,6 +290,15 @@ daemon_loop() {
     # happens to switch apps. Boot and leave the device idle and it runs at
     # the game's tier indefinitely.
     #
+    # Do not read that as "fanctl always re-applies at boot". It was measured
+    # with `performance`, and until thor-fanctl v0.5.1 its service.sh matched
+    # only `quiet|performance` - a `balanced` override was persisted, reported
+    # by `fanctl get`, and never applied, so the device booted on stock trips
+    # while every reader agreed it was in balanced. This daemon masked that
+    # only when a baseline file existed, i.e. only when the reboot happened
+    # mid-override. Depend on `fanctl get` for the recorded mode, never for
+    # what the trips currently are.
+    #
     # The foreground is not readable the instant the daemon starts - dumpsys
     # reported no topResumedActivity for either display just after boot - so
     # poll briefly for it. If it never arrives, resolving against an empty

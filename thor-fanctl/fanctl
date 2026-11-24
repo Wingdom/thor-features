@@ -18,7 +18,7 @@
 #   "fancontroller" at 80/100. On the Thor they land on a 9-state pwm-fan, so a
 #   connector at 43C demands the same fan speed the SoC only demands at 80C.
 #
-# Usage:  fanctl status | quiet | default | performance [--dry-run]
+# Usage:  fanctl status | quiet | balanced | performance | default [--dry-run]
 #
 # Safety invariants, enforced in plan_for_mode():
 #   - never raise a CPU/GPU fan trip above its original value (that would delay

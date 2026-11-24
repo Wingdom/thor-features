@@ -44,11 +44,18 @@ where they drove a 0-100 `fancontroller` at 80/100.
 | Mode | usb-therm | CPU/GPU ladder |
 |---|---|---|
 | `quiet` | 43/45 °C -> **60/62 °C** | untouched (stock) |
+| `balanced` | 43/45 °C -> 60/62 °C | shifted **-5 °C** (ramps sooner) |
+| `performance` | 43/45 °C -> 60/62 °C | shifted **-10 °C** (ramps sooner still) |
 | `default` | restored from recorded originals | restored |
-| `performance` | 43/45 °C -> 60/62 °C | shifted **-10 °C** (ramps sooner) |
+
+`quiet`, `balanced` and `performance` are the three user-facing tiers, and they
+are what the picker in `thor-fan-tile` offers. `default` is a CLI-only restore
+used by `uninstall.sh`; it is deliberately not selectable, because stock
+includes the 43 °C `usb-therm` trip this module exists to fix. "LineageOS
+stock" is the module being disabled, not a mode.
 
 ```
-fanctl status | quiet | default | performance [--dry-run]
+fanctl status | quiet | balanced | performance | default [--dry-run]
 fanctl get | json | selftest | discover | capture [--force]
 ```
 
@@ -138,7 +145,8 @@ The QS tile should shell out through root rather than touching sysfs:
 |---|---|
 | `fanctl get` | current mode, one word — cheap enough for a tile refresh |
 | `fanctl json` | machine-readable status: mode, fan state, pwm, every trip |
-| `fanctl quiet\|default\|performance` | apply; exit status is meaningful |
+| `fanctl quiet\|balanced\|performance` | apply a tier; exit status is meaningful |
+| `fanctl default` | CLI-only restore; an app layer should not offer it |
 | `fanctl selftest` | read-only health check |
 
 `fanctl` installs to `/system/bin`, so `su -c 'fanctl quiet'` works from any
