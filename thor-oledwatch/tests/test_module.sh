@@ -78,6 +78,16 @@ check "the cooldown sentinel appears once, as a return value" "1" \
 check "decide is not called with a literal elapsed time" "" \
       "$(sed 's/#.*//' oledwatch | grep -oE 'decide .*[0-9]{6,}' | tr '\n' ' ')"
 
+# `oledwatch run` once fired a wash without recording it, because record_fire
+# was called at one of the two call sites rather than inside start_wash. The
+# result was a `status` line reporting a wash from minutes earlier and a manual
+# wash that did not count towards the cooldown. Assert the recording lives
+# inside start_wash, where no caller can forget it.
+check "start_wash records the fire itself" "yes" \
+      "$(awk '/^start_wash\(\) \{/,/^\}/' oledwatch | grep -q 'record_fire' && echo yes || echo no)"
+check "record_fire is not called from anywhere else" "1" \
+      "$(sed 's/#.*//' oledwatch | grep -c '^[^#]*[^_]record_fire$')"
+
 check "no pkill/pgrep -f anywhere" "" \
       "$(sed 's/#.*//' oledwatch "${SHIPPED[@]}" \
          | grep -oE '\b(pkill|pgrep)\b[^|]*' | tr '\n' ' ')"
