@@ -318,11 +318,9 @@ start_wash() {
 
 loop() {
     logit "oledwatch started"
-    # Seeded from the file rather than from nothing, so that restarting the
-    # daemon mid-boot does not forget a wash that just happened and fire again
-    # immediately. Across a reboot the boot id will not match and this correctly
-    # comes back as "no record".
-    LAST_FIRE=$(last_fire_ms "$LAST_FIRE_FILE" "$(boot_id)" "$(uptime_ms)")
+    # The boot id cannot change while this process lives, so read it once
+    # rather than per pass.
+    BOOT=$(boot_id)
     while :; do
         read_config
         snapshot
@@ -330,6 +328,14 @@ loop() {
         WAKE=${1:-unknown}; IDLE=${2:--1}; LOCK=${3:-0}; OVERRIDE=${4:--1}
         KEYGUARD=$(keyguard_showing "$STATE/.activity")
         NOW=$(uptime_ms)
+        # Re-read every pass rather than caching across iterations. `oledwatch
+        # run` writes this same record, and a cached copy meant the daemon
+        # could not see a wash somebody had forced by hand: it would go on
+        # believing none had happened and wash again as soon as the idle
+        # threshold came round. The file is the single source of truth for
+        # every reader, this loop included. It is a file read, not a process
+        # spawn, so doing it per pass costs nothing worth saving.
+        LAST_FIRE=$(last_fire_ms "$LAST_FIRE_FILE" "$BOOT" "$NOW")
         SINCE=$(( NOW - LAST_FIRE ))
         if app_installed; then APP=1; else APP=0; fi
 
@@ -339,11 +345,8 @@ loop() {
             > "$STATE/.last" 2>/dev/null
 
         if [ "$VERDICT" = "wash" ]; then
-            # Read back rather than taking uptime again, so the daemon in
-            # memory and the file on disk cannot drift apart.
-            if start_wash; then
-                LAST_FIRE=$(last_fire_ms "$LAST_FIRE_FILE" "$(boot_id)" "$(uptime_ms)")
-            fi
+            # start_wash records the fire itself; the next pass reads it back.
+            start_wash
             REMAIN=$THRESHOLD_MS
         elif [ "$VERDICT" = "hold app-missing" ] || [ "$VERDICT" = "hold disabled" ]; then
             # Nothing to do and nothing that will change within a minute. Back

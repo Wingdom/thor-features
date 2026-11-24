@@ -83,6 +83,16 @@ check "decide is not called with a literal elapsed time" "" \
 # result was a `status` line reporting a wash from minutes earlier and a manual
 # wash that did not count towards the cooldown. Assert the recording lives
 # inside start_wash, where no caller can forget it.
+# The daemon once cached the fire record in a shell variable across loop
+# iterations, so a wash forced through `oledwatch run` -- which writes that
+# same record -- was invisible to it, and it would wash again as soon as the
+# idle threshold came round. Assert the read happens inside the loop.
+check "the loop reads the record every pass" "yes" \
+      "$(awk '/^loop\(\) \{/,/^\}/' oledwatch \
+         | awk '/while :; do/,0' | grep -q 'LAST_FIRE=\$(last_fire_ms' && echo yes || echo no)"
+check "and does not also cache it before the loop" "no" \
+      "$(awk '/^loop\(\) \{/,/while :; do/' oledwatch | grep -q 'LAST_FIRE=' && echo yes || echo no)"
+
 check "start_wash records the fire itself" "yes" \
       "$(awk '/^start_wash\(\) \{/,/^\}/' oledwatch | grep -q 'record_fire' && echo yes || echo no)"
 check "record_fire is not called from anywhere else" "1" \
