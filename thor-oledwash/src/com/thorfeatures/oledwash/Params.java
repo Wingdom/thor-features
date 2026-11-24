@@ -38,6 +38,24 @@ public final class Params {
      */
     public static final int NOISE_FLOOR = 160;
 
+    /**
+     * Minutes of inactivity before an automatic wash. Offered to the user, and
+     * read back by the daemon from the same preferences file.
+     */
+    public static final int[] IDLE_MINUTES = { 1, 2, 5, 10, 15, 30 };
+
+    /**
+     * Automatic running defaults ON.
+     *
+     * <p>The module is opt-in by having been flashed at all, so somebody who
+     * installed it wants it working without first having to find a switch. The
+     * daemon's own default agrees, which matters: the preferences file does not
+     * exist until the settings screen is opened, and the two halves must read
+     * the same way when it is absent.
+     */
+    public static final boolean DEFAULT_AUTO = true;
+    public static final int DEFAULT_IDLE_MINUTES = 5;
+
     public static final long DEFAULT_CYCLE_MS = 2500L;
     /** 0.33, from the photograph measurement -- 32 % on the less distorted panel. */
     public static final double DEFAULT_BAND = 0.33;

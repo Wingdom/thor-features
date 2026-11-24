@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="idle_minutes_old" value="99" />
+    <boolean name="auto" value="false" />
+    <int name="idle_minutes" value="10" />
+    <float name="band" value="0.5" />
+    <long name="cycle_ms" value="4000" />
+    <int name="cycles" value="2" />
+    <int name="grain" value="1" />
+    <int name="target" value="2" />
+</map>

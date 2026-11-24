@@ -62,55 +62,63 @@ check "absent reads as unknown, never as unlocked" "unknown" \
 rm -f /tmp/oledwatch-nokg.$$
 
 # --- the decision ------------------------------------------------------------
-# decide <enabled> <wake> <idle> <lock> <override> <keyguard> <threshold> <since>
+# decide <enabled> <app> <wake> <idle> <lock> <override> <keyguard> <threshold> <since>
 echo
 echo " decide"
 T=300000      # five minutes
 FAR=999999999 # long since the last wash
 
 check "idle, unlocked, nothing holding the screen" "wash" \
-      "$(decide 1 Awake 400000 0 -1 no $T $FAR)"
+      "$(decide 1 1 Awake 400000 0 -1 no $T $FAR)"
 
+# No app means nothing to start. Reported as a verdict so that `status` can
+# say why nothing is happening, rather than it being buried in the log.
+check "no app installed" "hold app-missing" \
+      "$(decide 1 0 Awake 400000 0 -1 no $T $FAR)"
+check "switched off beats a missing app" "hold disabled" \
+      "$(decide 0 0 Awake 400000 0 -1 no $T $FAR)"
+check "a missing app beats everything else" "hold app-missing" \
+      "$(decide 1 0 Asleep 1 1 600000 yes $T 0)"
 check "turned off" "hold disabled" \
-      "$(decide 0 Awake 400000 0 -1 no $T $FAR)"
+      "$(decide 0 1 Awake 400000 0 -1 no $T $FAR)"
 check "screen off" "hold not-awake" \
-      "$(decide 1 Asleep 400000 0 -1 no $T $FAR)"
+      "$(decide 1 1 Asleep 400000 0 -1 no $T $FAR)"
 check "dozing counts as not awake" "hold not-awake" \
-      "$(decide 1 Dozing 400000 0 -1 no $T $FAR)"
+      "$(decide 1 1 Dozing 400000 0 -1 no $T $FAR)"
 check "locked" "hold locked" \
-      "$(decide 1 Awake 400000 0 -1 yes $T $FAR)"
+      "$(decide 1 1 Awake 400000 0 -1 yes $T $FAR)"
 check "unknown keyguard is treated as locked" "hold locked" \
-      "$(decide 1 Awake 400000 0 -1 unknown $T $FAR)"
+      "$(decide 1 1 Awake 400000 0 -1 unknown $T $FAR)"
 check "an app is holding the screen up" "hold screen-held" \
-      "$(decide 1 Awake 400000 1 -1 no $T $FAR)"
+      "$(decide 1 1 Awake 400000 1 -1 no $T $FAR)"
 check "an app asked for a longer timeout" "hold timeout-override" \
-      "$(decide 1 Awake 400000 0 600000 no $T $FAR)"
+      "$(decide 1 1 Awake 400000 0 600000 no $T $FAR)"
 check "still being used" "hold active" \
-      "$(decide 1 Awake 4000 0 -1 no $T $FAR)"
+      "$(decide 1 1 Awake 4000 0 -1 no $T $FAR)"
 check "exactly at the threshold fires" "wash" \
-      "$(decide 1 Awake 300000 0 -1 no $T $FAR)"
+      "$(decide 1 1 Awake 300000 0 -1 no $T $FAR)"
 check "one millisecond short does not" "hold active" \
-      "$(decide 1 Awake 299999 0 -1 no $T $FAR)"
+      "$(decide 1 1 Awake 299999 0 -1 no $T $FAR)"
 
 # Without this the daemon would fire on every poll for as long as the device
 # was left alone, because idle keeps climbing and a wash does not reset it.
 check "just washed, so wait" "hold cooldown" \
-      "$(decide 1 Awake 400000 0 -1 no $T 1000)"
+      "$(decide 1 1 Awake 400000 0 -1 no $T 1000)"
 check "a full threshold later, wash again" "wash" \
-      "$(decide 1 Awake 700000 0 -1 no $T $T)"
+      "$(decide 1 1 Awake 700000 0 -1 no $T $T)"
 
 # An unreadable device must refuse, not be treated as idle forever.
 check "missing idle refuses" "hold unreadable" \
-      "$(decide 1 Awake -1 0 -1 no $T $FAR)"
+      "$(decide 1 1 Awake -1 0 -1 no $T $FAR)"
 check "garbage idle refuses" "hold unreadable" \
-      "$(decide 1 Awake abc 0 -1 no $T $FAR)"
+      "$(decide 1 1 Awake abc 0 -1 no $T $FAR)"
 
 # Order of reasons: the most fundamental wins, so the reason reported is the
 # one a person would give.
 check "off beats everything" "hold disabled" \
-      "$(decide 0 Asleep 1 1 600000 yes $T 0)"
+      "$(decide 0 1 Asleep 1 1 600000 yes $T 0)"
 check "asleep beats locked" "hold not-awake" \
-      "$(decide 1 Asleep 400000 0 -1 yes $T $FAR)"
+      "$(decide 1 1 Asleep 400000 0 -1 yes $T $FAR)"
 
 # --- polling interval --------------------------------------------------------
 echo
@@ -121,20 +129,28 @@ check "zero floors too"                 "10" "$(clamp_interval 0)"
 check "mid range is proportional"       "30" "$(clamp_interval 30000)"
 check "garbage floors rather than spins" "10" "$(clamp_interval abc)"
 
-# --- config ------------------------------------------------------------------
+# --- settings, read from the app's own preferences ---------------------------
 echo
-echo " config_get"
-CFG=/tmp/oledwatch-cfg.$$
-printf 'enabled=1\nidle_minutes=10\nband=0.50\nblank=\n' > "$CFG"
-check "reads a value"          "10"   "$(config_get "$CFG" idle_minutes 5)"
-check "reads a decimal"        "0.50" "$(config_get "$CFG" band 0.33)"
-check "missing key defaults"   "2"    "$(config_get "$CFG" grain 2)"
-check "blank value defaults"   "7"    "$(config_get "$CFG" blank 7)"
-check "missing file defaults"  "5"    "$(config_get /nonexistent/x idle_minutes 5)"
-# A key that is a prefix of another must not match it.
-printf 'idle_minutes_old=99\nidle_minutes=3\n' > "$CFG"
-check "prefix key does not match" "3" "$(config_get "$CFG" idle_minutes 5)"
-rm -f "$CFG"
+echo " pref_get"
+check "reads a boolean as a number" "0"    "$(pref_get $F/prefs-set.txt auto 1)"
+check "reads an int"                "10"   "$(pref_get $F/prefs-set.txt idle_minutes 5)"
+check "reads a float"               "0.5"  "$(pref_get $F/prefs-set.txt band 0.33)"
+check "reads a long"                "4000" "$(pref_get $F/prefs-set.txt cycle_ms 2500)"
+check "reads the panel target"      "2"    "$(pref_get $F/prefs-set.txt target 0)"
+# The stale key sits ABOVE the real one in the fixture, so a substring match
+# would return 99 here and putting it below would let that bug pass.
+check "a stale similar key does not win" "10" \
+      "$(pref_get $F/prefs-set.txt idle_minutes 5)"
+check "missing key defaults"    "2" "$(pref_get $F/prefs-set.txt grain_x 2)"
+check "empty prefs defaults"    "5" "$(pref_get $F/prefs-empty.txt idle_minutes 5)"
+# A device where the settings screen has never been opened has no file at all,
+# and must run on exactly the values the app would have shown.
+check "no prefs file at all defaults" "5" "$(pref_get /nonexistent/x idle_minutes 5)"
+check "defaults match Params.java" "1 5 0.33 2500 4 2 0" \
+      "$(pref_get /nonexistent/x auto 1) $(pref_get /nonexistent/x idle_minutes 5) \
+$(pref_get /nonexistent/x band 0.33) $(pref_get /nonexistent/x cycle_ms 2500) \
+$(pref_get /nonexistent/x cycles 4) $(pref_get /nonexistent/x grain 2) \
+$(pref_get /nonexistent/x target 0)"
 
 echo
 echo "  $pass passed, $fail failed"

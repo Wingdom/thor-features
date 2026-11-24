@@ -1,6 +1,7 @@
 package com.thorfeatures.oledwash;
 
 import android.app.Activity;
+import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Display;
@@ -14,17 +15,21 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The draw-only control panel.
+ * The control panel: what gets drawn, and whether it runs by itself.
  *
- * <p>No idle trigger, no automation, nothing that runs by itself. This build
- * exists so the wash can be looked at and the scroll speed judged, because the
- * arithmetic cannot settle that question: sweep speed does not change how much
- * drive each pixel receives per second, only how that drive is parcelled, so
- * the choice is about what reads as deliberate rather than alarming. That is a
- * question for a person holding the device.
+ * <p>Every value here is written to {@link Prefs}, which the
+ * {@code thor-oledwatch} daemon reads as root. The app never writes the
+ * daemon's own directory and never calls {@code su} — that split is what keeps
+ * this app free of permissions, and the component's build asserts it.
+ *
+ * <p>With no module installed the settings still save; the screen says plainly
+ * that nothing is reading them, rather than offering a switch that silently
+ * does nothing.
  */
 public final class MainActivity extends Activity {
 
+    private boolean auto = Params.DEFAULT_AUTO;
+    private int idleMinutes = Params.DEFAULT_IDLE_MINUTES;
     private long cycleMs = Params.DEFAULT_CYCLE_MS;
     private double band = Params.DEFAULT_BAND;
     private int cycles = Params.DEFAULT_CYCLES;
@@ -40,6 +45,7 @@ public final class MainActivity extends Activity {
         super.onCreate(saved);
         setContentView(R.layout.main);
         content = findViewById(R.id.content);
+        load();
         build();
     }
 
@@ -49,38 +55,107 @@ public final class MainActivity extends Activity {
         refresh();
     }
 
+    // ------------------------------------------------------------- storage --
+
+    private void load() {
+        SharedPreferences p = Prefs.of(this);
+        auto = p.getBoolean(Prefs.KEY_AUTO, Params.DEFAULT_AUTO);
+        idleMinutes = p.getInt(Prefs.KEY_IDLE_MINUTES, Params.DEFAULT_IDLE_MINUTES);
+        cycleMs = p.getLong(Prefs.KEY_CYCLE_MS, Params.DEFAULT_CYCLE_MS);
+        band = p.getFloat(Prefs.KEY_BAND, (float) Params.DEFAULT_BAND);
+        cycles = p.getInt(Prefs.KEY_CYCLES, Params.DEFAULT_CYCLES);
+        grain = p.getInt(Prefs.KEY_GRAIN, Params.DEFAULT_GRAIN);
+        target = p.getInt(Prefs.KEY_TARGET, Params.DEFAULT_TARGET);
+
+        // Snap anything unexpected onto an offered value, so a hand-edited or
+        // stale preference cannot leave a picker row with nothing selected.
+        idleMinutes = Params.nearest(Params.IDLE_MINUTES, idleMinutes);
+        cycleMs = Params.nearest(Params.CYCLE_MS, cycleMs);
+        band = Params.nearest(Params.BAND, band);
+        cycles = Params.nearest(Params.CYCLES, cycles);
+        grain = Params.nearest(Params.GRAIN, grain);
+        if (target < Params.TARGET_ALL || target > Params.TARGET_SECONDARY) {
+            target = Params.DEFAULT_TARGET;
+        }
+
+        // Write the defaults out once, on first open, so the file exists.
+        // Nothing depends on it -- the daemon falls back to the same numbers --
+        // but "no settings file" and "settings that happen to be the defaults"
+        // look identical from the daemon's side, and only one of them means the
+        // user has ever seen this screen. `oledwatch status` can then say which.
+        if (!p.contains(Prefs.KEY_AUTO)) save();
+    }
+
+    /**
+     * Written with {@code commit}, not {@code apply}.
+     *
+     * <p>{@code apply} returns before the file is on disk. The daemon may read
+     * it moments later, and a setting that had visibly changed on screen but
+     * not yet in the file is the kind of disagreement that is very hard to see
+     * afterwards. This happens on a tap, so the cost is irrelevant.
+     */
+    private void save() {
+        Prefs.of(this).edit()
+                .putBoolean(Prefs.KEY_AUTO, auto)
+                .putInt(Prefs.KEY_IDLE_MINUTES, idleMinutes)
+                .putLong(Prefs.KEY_CYCLE_MS, cycleMs)
+                .putFloat(Prefs.KEY_BAND, (float) band)
+                .putInt(Prefs.KEY_CYCLES, cycles)
+                .putInt(Prefs.KEY_GRAIN, grain)
+                .putInt(Prefs.KEY_TARGET, target)
+                .commit();
+    }
+
+    // --------------------------------------------------------------- build --
+
     private void build() {
         content.removeAllViews();
 
         content.addView(heading(getString(R.string.app_name)));
         content.addView(body(getString(R.string.intro)));
 
+        // --- run by itself ---
+        content.addView(subheading(getString(R.string.section_auto)));
+        content.addView(body(getString(ModuleState.moduleInstalled()
+                ? R.string.auto_ready : R.string.auto_no_module)));
+
+        content.addView(pickerRow(getString(R.string.label_auto),
+                new String[]{ getString(R.string.auto_off), getString(R.string.auto_on) },
+                auto ? 1 : 0,
+                i -> { auto = (i == 1); changed(); }));
+
+        content.addView(pickerRow(getString(R.string.label_idle),
+                labels(Params.IDLE_MINUTES, v -> getString(R.string.idle_suffix, v)),
+                Params.indexOf(Params.IDLE_MINUTES, idleMinutes),
+                i -> { idleMinutes = Params.IDLE_MINUTES[i]; changed(); }));
+
+        // --- what gets drawn ---
         content.addView(pickerRow(getString(R.string.label_speed),
                 labels(Params.CYCLE_MS, v -> String.format(Locale.US, "%.1fs", v / 1000.0)),
                 Params.indexOf(Params.CYCLE_MS, cycleMs),
-                i -> { cycleMs = Params.CYCLE_MS[i]; refreshAll(); }));
+                i -> { cycleMs = Params.CYCLE_MS[i]; changed(); }));
 
         content.addView(pickerRow(getString(R.string.label_band),
                 labels(Params.BAND, v -> String.format(Locale.US, "%.0f%%", v * 100.0)),
                 Params.indexOf(Params.BAND, band),
-                i -> { band = Params.BAND[i]; refreshAll(); }));
+                i -> { band = Params.BAND[i]; changed(); }));
 
         content.addView(pickerRow(getString(R.string.label_cycles),
                 labels(Params.CYCLES, v -> String.valueOf(v)),
                 Params.indexOf(Params.CYCLES, cycles),
-                i -> { cycles = Params.CYCLES[i]; refreshAll(); }));
+                i -> { cycles = Params.CYCLES[i]; changed(); }));
 
         content.addView(pickerRow(getString(R.string.label_grain),
                 labels(Params.GRAIN, v -> String.valueOf(v)),
                 Params.indexOf(Params.GRAIN, grain),
-                i -> { grain = Params.GRAIN[i]; refreshAll(); }));
+                i -> { grain = Params.GRAIN[i]; changed(); }));
 
         content.addView(pickerRow(getString(R.string.label_screens),
                 new String[]{ getString(R.string.screens_all),
                               getString(R.string.screens_primary),
                               getString(R.string.screens_secondary) },
                 target,
-                i -> { target = i; refreshAll(); }));
+                i -> { target = i; changed(); }));
 
         summary = body("");
         summary.setTypeface(Typeface.MONOSPACE);
@@ -102,14 +177,14 @@ public final class MainActivity extends Activity {
         refresh();
     }
 
-    /** Rebuild so the selected button in each row is redrawn. */
-    private void refreshAll() {
+    /** Persist, then redraw so the selected button in each row moves. */
+    private void changed() {
+        save();
         build();
     }
 
     private void refresh() {
-        int h = panelHeight();
-        WashPlan plan = WashPlan.of(h, band, cycleMs, cycles);
+        WashPlan plan = WashPlan.of(panelHeight(), band, cycleMs, cycles);
         summary.setText(Summary.describe(plan, grain));
 
         List<PanelRef> panels = Displays.panels(this);
@@ -215,6 +290,19 @@ public final class MainActivity extends Activity {
         t.setTypeface(null, Typeface.BOLD);
         t.setTextColor(getColor(R.color.heading));
         t.setGravity(Gravity.START);
+        return t;
+    }
+
+    private TextView subheading(String s) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(16f);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setTextColor(getColor(R.color.heading));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(20);
+        t.setLayoutParams(lp);
         return t;
     }
 

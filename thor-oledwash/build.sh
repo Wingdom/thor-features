@@ -64,7 +64,8 @@ java -cp out/test com.thorfeatures.oledwash.TestMain \
 # root dependency. The idle trigger lives in the thor-oledwatch module, which
 # is where root belongs.
 MANUAL="MainActivity WashLauncher WashActivity WashView Displays DisplayChoice \
-        PanelRef WashPlan WashSession Noise Params Summary AutoWashActivity"
+        PanelRef WashPlan WashSession Noise Params Summary AutoWashActivity \
+        Prefs ModuleState"
 for c in $MANUAL; do
     f="src/$PKG_PATH/$c.java"
     [ -f "$f" ] || { echo "missing: $f"; exit 1; }

@@ -87,18 +87,23 @@ keyguard_showing() {
     esac
 }
 
-# decide <enabled> <wakefulness> <idle_ms> <screen_lock> <override> \
-#        <keyguard> <threshold_ms> <since_last_fire_ms>
+# decide <enabled> <app_present> <wakefulness> <idle_ms> <screen_lock> \
+#        <override> <keyguard> <threshold_ms> <since_last_fire_ms>
 #   Emits "wash", or "hold <reason>".
 #
 #   Reasons are stable strings; the tests and the status output both depend on
 #   them. Ordered most-fundamental first, so the reason reported is the one a
 #   person would give.
 decide() {
-    _enabled=$1; _wake=$2; _idle=$3; _lock=$4; _override=$5
-    _keyguard=$6; _threshold=$7; _since=$8
+    _enabled=$1; _app=$2; _wake=$3; _idle=$4; _lock=$5; _override=$6
+    _keyguard=$7; _threshold=$8; _since=$9
 
     [ "$_enabled" = "1" ]   || { echo "hold disabled"; return 0; }
+
+    # No app, nothing to start. Reported as a verdict rather than buried in the
+    # log, so `oledwatch status` says why nothing is happening.
+    [ "$_app" = "1" ]       || { echo "hold app-missing"; return 0; }
+
     [ "$_wake" = "Awake" ]  || { echo "hold not-awake"; return 0; }
 
     # Unknown is treated as locked. See keyguard_showing.
@@ -135,15 +140,42 @@ clamp_interval() {
     echo "$_s"
 }
 
-# config_get <file> <key> <default>
-#   Reads key=value. A missing file, a missing key or a blank value all give
-#   the default, so a half-written config degrades to working defaults rather
-#   than to an empty variable used as a number.
-config_get() {
+# pref_get <shared-prefs-xml> <key> <default>
+#   Reads one value out of the app's own SharedPreferences file.
+#
+#   The settings live with the app rather than in this module's directory, and
+#   the direction is the point: the app writes its own preferences with no root
+#   and no permission, and this daemon -- which already has root -- reads them.
+#   The alternative, the app writing under /data/adb, would have required `su`
+#   in the app and cost it its Magisk Superuser grant.
+#
+#   A daemon started from service.sh runs in the global mount namespace, so it
+#   sees every package's data directory. That is NOT true of `su` spawned by an
+#   app: thor-stickcal measured a shell seeing 223 entries under /data/user_de/0
+#   where the app's own root shell saw two, and silently skipped a write because
+#   of it. Different direction, different outcome, but worth knowing why this
+#   one is safe.
+#
+#   A missing file, a missing key or a blank value all give the default, so a
+#   device where the settings screen has never been opened runs on the same
+#   values the app would have shown.
+pref_get() {
     _v=""
-    [ -f "$1" ] && _v=$(awk -F= -v k="$2" '
-        $1 == k { v = $2; sub(/[ \t\r]+$/, "", v); print v; exit }' "$1")
+    if [ -f "$1" ]; then
+        _v=$(awk -v k="$2" '
+            index($0, "name=\"" k "\"") > 0 {
+                if (match($0, /value="[^"]*"/)) {
+                    print substr($0, RSTART + 7, RLENGTH - 8)
+                    exit
+                }
+            }' "$1")
+    fi
     [ -n "$_v" ] || _v=$3
+    # Booleans come back as the words, and everything downstream wants numbers.
+    case "$_v" in
+        true)  _v=1 ;;
+        false) _v=0 ;;
+    esac
     echo "$_v"
 }
 
@@ -157,6 +189,10 @@ LOG=${LOG:-$STATE/log}
 PIDFILE=${PIDFILE:-$STATE/pid}
 PKG=${PKG:-com.thorfeatures.oledwash}
 ACTIVITY=${ACTIVITY:-$PKG/.AutoWashActivity}
+# Device-protected storage, not /data/user/0: credential-encrypted preferences
+# are unreadable until the first unlock after a boot, and a daemon that read
+# them early would quietly see nothing and report defaults the user never chose.
+PREFS=${PREFS:-/data/user_de/0/$PKG/shared_prefs/oledwash.xml}
 LOG_MAX=${LOG_MAX:-400}
 
 mkdir -p "$STATE" 2>/dev/null
@@ -191,14 +227,17 @@ snapshot() {
     dumpsys activity activities > "$STATE/.activity" 2>/dev/null
 }
 
+# Defaults here MUST match Params.java. The preferences file does not exist
+# until the settings screen is opened, so until then both halves are running on
+# their own copy of the same numbers and a disagreement would be invisible.
 read_config() {
-    ENABLED=$(config_get "$CONFIG" enabled 1)
-    IDLE_MINUTES=$(config_get "$CONFIG" idle_minutes 5)
-    BAND=$(config_get "$CONFIG" band 0.33)
-    CYCLE_MS=$(config_get "$CONFIG" cycle_ms 2500)
-    CYCLES=$(config_get "$CONFIG" cycles 4)
-    GRAIN=$(config_get "$CONFIG" grain 2)
-    TARGET=$(config_get "$CONFIG" target 0)
+    ENABLED=$(pref_get "$PREFS" auto 1)
+    IDLE_MINUTES=$(pref_get "$PREFS" idle_minutes 5)
+    BAND=$(pref_get "$PREFS" band 0.33)
+    CYCLE_MS=$(pref_get "$PREFS" cycle_ms 2500)
+    CYCLES=$(pref_get "$PREFS" cycles 4)
+    GRAIN=$(pref_get "$PREFS" grain 2)
+    TARGET=$(pref_get "$PREFS" target 0)
     case "$IDLE_MINUTES" in ''|*[!0-9]*) IDLE_MINUTES=5 ;; esac
     [ "$IDLE_MINUTES" -lt 1 ] && IDLE_MINUTES=1
     THRESHOLD_MS=$(( IDLE_MINUTES * 60000 ))
@@ -240,8 +279,9 @@ loop() {
         KEYGUARD=$(keyguard_showing "$STATE/.activity")
         NOW=$(uptime_ms)
         SINCE=$(( NOW - LAST_FIRE ))
+        if app_installed; then APP=1; else APP=0; fi
 
-        VERDICT=$(decide "$ENABLED" "$WAKE" "$IDLE" "$LOCK" "$OVERRIDE" \
+        VERDICT=$(decide "$ENABLED" "$APP" "$WAKE" "$IDLE" "$LOCK" "$OVERRIDE" \
                          "$KEYGUARD" "$THRESHOLD_MS" "$SINCE")
         echo "$VERDICT $WAKE idle=$IDLE lock=$LOCK override=$OVERRIDE keyguard=$KEYGUARD" \
             > "$STATE/.last" 2>/dev/null
@@ -249,6 +289,14 @@ loop() {
         if [ "$VERDICT" = "wash" ]; then
             start_wash && LAST_FIRE=$(uptime_ms)
             REMAIN=$THRESHOLD_MS
+        elif [ "$VERDICT" = "hold app-missing" ] || [ "$VERDICT" = "hold disabled" ]; then
+            # Nothing to do and nothing that will change within a minute. Back
+            # all the way off rather than spending two dumpsys calls every ten
+            # seconds forever. Not exiting: installing the app or switching the
+            # setting back on should take effect without a reboot.
+            REMAIN=$THRESHOLD_MS
+            sleep 60
+            continue
         else
             case "$IDLE" in
                 ''|*[!0-9]*) REMAIN=$THRESHOLD_MS ;;
@@ -298,8 +346,9 @@ case "${1:-status}" in
         read_config
         snapshot
         set -- $(power_facts "$STATE/.power")
-        echo "$(decide "$ENABLED" "${1:-unknown}" "${2:--1}" "${3:-0}" "${4:--1}" \
-                "$(keyguard_showing "$STATE/.activity")" "$THRESHOLD_MS" 999999999)"
+        if app_installed; then _a=1; else _a=0; fi
+        decide "$ENABLED" "$_a" "${1:-unknown}" "${2:--1}" "${3:-0}" "${4:--1}" \
+               "$(keyguard_showing "$STATE/.activity")" "$THRESHOLD_MS" 999999999
         ;;
     log)
         [ -f "$LOG" ] && cat "$LOG" || echo "(no log yet)"
@@ -310,7 +359,9 @@ case "${1:-status}" in
         _p=$(running_pid) && echo "  daemon:     running (pid $_p)" \
                           || echo "  daemon:     not running"
         echo "  app:        $(app_installed && echo "$PKG installed" || echo "$PKG NOT INSTALLED")"
-        echo "  config:     $CONFIG"
+        echo "  settings:   $PREFS"
+        echo "              $([ -f "$PREFS" ] && echo "read from the app" \
+                              || echo "not written yet, using defaults")"
         echo "  enabled:    $ENABLED"
         echo "  idle:       ${IDLE_MINUTES}m (${THRESHOLD_MS}ms)"
         echo "  wash:       band $BAND, ${CYCLE_MS}ms x $CYCLES, grain $GRAIN, target $TARGET"
