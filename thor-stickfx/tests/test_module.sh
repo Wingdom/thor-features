@@ -10,6 +10,16 @@ bad() { fail=$((fail+1)); printf '  \033[31mFAIL\033[0m %s\n     %s\n' "$1" "${2
 # the script with comments stripped: invariants documented in prose must never
 # count as violations (the lesson from thor-fanctl's test suite)
 code() { sed 's/#.*//' "$P/stickfx"; }
+# Same intent, but dropping only WHOLE-LINE comments. `code()` strips from any
+# `#` to end of line, which also destroys a `#` that is part of a parameter
+# expansion -- `${foo#*[}` becomes `${foo`. Any check whose pattern contains a
+# `#` must use this instead, or it is searching text that cannot contain what
+# it is looking for. See the bracket-pattern check below, which was dead for
+# exactly that reason. Prose still cannot trigger it: every invariant in
+# stickfx is documented on its own comment line, which this drops. An inline
+# trailing comment carrying such a pattern would false-positive -- but that
+# fails loudly, which is the opposite of the bug being fixed here.
+code_lines() { grep -vE '^[[:space:]]*#' "$P/stickfx"; }
 
 echo "magisk module structure"
 for f in module.prop customize.sh service.sh uninstall.sh system/bin/stickfx; do
@@ -131,11 +141,34 @@ if grep -qE 'for [A-Za-z_]+ in \$[0-9]' \
 else
   ok "parsers do not word-split the trigger list"
 fi
-# ${x#*[} is an invalid pattern (unterminated bracket expression)
-if grep -qE '\$\{[A-Za-z_0-9]+#\*\[\}' <<<"$(code)"; then
+# ${x#*[} is an invalid pattern (unterminated bracket expression). The written
+# form must be ${x#*\[}, as active_trigger() has it.
+#
+# This check was DEAD from the day it was written, and passed anyway: it read
+# `code()`, whose comment-stripping turns `${foo#*[}` into `${foo` before grep
+# ever sees it, so the match was impossible. Proven 2026-11-25 by appending
+# `badpat=${foo#*[}` to stickfx -- the assertion still reported PASS. It reads
+# the whole-line-comment variant now, and the two controls below mean it cannot
+# go quiet again without failing.
+BRACKET_BUG='\$\{[A-Za-z_0-9]+#\*\[\}'
+if grep -qE "$BRACKET_BUG" <<<"$(code_lines)"; then
   bad "bracket patterns are escaped" "found an unescaped \${x#*[}"
 else
   ok "bracket patterns are escaped"
+fi
+# POSITIVE CONTROL: the matcher must fire on a known-bad line. Without this,
+# the check above is indistinguishable from the dead version it replaces.
+if grep -qE "$BRACKET_BUG" <<<'_sfx_t=${1#*[}'; then
+  ok "the bracket matcher fires on an unescaped \${x#*[}"
+else
+  bad "the bracket matcher fires on an unescaped \${x#*[}" "the check is dead again"
+fi
+# NEGATIVE CONTROL: and must NOT fire on the correct, escaped form, or it would
+# condemn the very line it is asking for.
+if grep -qE "$BRACKET_BUG" <<<'_sfx_t=${1#*\[}'; then
+  bad "the bracket matcher accepts the escaped \${x#*\\[}" "it flags correct code"
+else
+  ok "the bracket matcher accepts the escaped \${x#*\\[}"
 fi
 
 echo
