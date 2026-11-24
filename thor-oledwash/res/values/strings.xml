@@ -2,9 +2,15 @@
 <resources>
     <string name="app_name">Thor OLED Wash</string>
 
+    <!-- Deliberately says nothing about WHEN a wash happens. That depends on
+         whether the module is installed and on the Automatic setting, and the
+         line under "Run by itself" below says so from the live state. The
+         previous version of this string asserted "there is no idle trigger
+         yet", which was true when it was written and contradicted the line
+         right beneath it once the module existed. Static text should not
+         describe something that varies. -->
     <string name="intro">Sweeps a band of bright noise down each OLED panel, so
-        static content does not sit on the same pixels indefinitely. This build
-        runs only when you tap Run now — there is no idle trigger yet.\n\nIt
+        static content does not sit on the same pixels for hours.\n\nA wash
         stops on any touch, button, stick or trigger. It never changes
         brightness and never keeps the screen awake.</string>
 
