@@ -109,8 +109,36 @@ check "the daemon names the app" "yes" \
 check "the installer refuses without the app" "yes" \
       "$(grep -q 'abort' magisk/customize.sh && echo yes || echo no)"
 if [ -d ../thor-oledwash/src ]; then
-    check "the app never mentions this module" "" \
-          "$(grep -rlE 'oledwatch|thor-oledwatch' ../thor-oledwash/src 2>/dev/null | tr '\n' ' ')"
+    # Strip comments first. Three of the app's files DISCUSS this module in
+    # their javadoc, and that prose is worth having -- it is where the reasoning
+    # about the split lives. What matters is that no code depends on it. A
+    # sibling's tests once failed on correct code for exactly this reason, by
+    # matching prose instead of intent.
+    strip_java() {
+        sed -e 's|//.*||' -e 's|^[[:space:]]*\*.*||' -e 's|^[[:space:]]*/\*.*||' "$@"
+    }
+    named=""
+    for f in ../thor-oledwash/src/com/thorfeatures/oledwash/*.java; do
+        if strip_java "$f" | grep -q 'oledwatch'; then
+            named="$named$(basename "$f") "
+        fi
+    done
+    # Exactly ONE class may name this module in code, and its whole job is
+    # answering "is it installed", so the app can say so instead of offering a
+    # switch that silently does nothing. Naming the file here is the point: a
+    # second one appearing is the thing worth noticing.
+    check "only ModuleState names this module in code" "ModuleState.java " "$named"
+
+    # And the wash path itself must be clean even of the prose, because those
+    # are the classes that have to work with nothing flashed.
+    check "the wash path never names it at all" "" \
+          "$(grep -lE 'oledwatch' \
+               ../thor-oledwash/src/com/thorfeatures/oledwash/WashLauncher.java \
+               ../thor-oledwash/src/com/thorfeatures/oledwash/WashActivity.java \
+               ../thor-oledwash/src/com/thorfeatures/oledwash/WashView.java \
+               ../thor-oledwash/src/com/thorfeatures/oledwash/DisplayChoice.java \
+               ../thor-oledwash/src/com/thorfeatures/oledwash/Displays.java \
+               2>/dev/null | tr '\n' ' ')"
 else
     echo "  skip  app sources not beside this component"
 fi

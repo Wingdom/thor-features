@@ -24,4 +24,17 @@
     <string name="status_none">No panel available to wash.</string>
 
     <string name="wash_hint">Tap, or press anything, to stop</string>
+
+    <string name="section_auto">Run by itself</string>
+    <string name="label_auto">Automatic</string>
+    <string name="label_idle">After</string>
+    <string name="auto_off">Off</string>
+    <string name="auto_on">On</string>
+    <string name="idle_suffix">%1$d min</string>
+    <string name="auto_ready">The thor-oledwatch module is installed, so these
+        settings take effect. It washes when the screen is on, unlocked, and you
+        have not touched anything for the chosen time.</string>
+    <string name="auto_no_module">Install the <b>thor-oledwatch</b> Magisk module
+        to use this. Without it these settings are saved but nothing reads them,
+        and Run now is the only way to wash.</string>
 </resources>
